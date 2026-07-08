@@ -1,24 +1,29 @@
-import { EVENTS } from '../lib/events.js';
-import { RoomManager } from './rooms.js';
-import { topScores } from './leaderboard.js';
+import { EVENTS, DEFAULT_GAME, MAX_NAME } from '../lib/events.js';
+import { saveResults, topScores } from './leaderboard.js';
 
-// Wires raw Socket.IO connections to the RoomManager. Called once from
-// server.js after the io server is attached to the HTTP server.
+// The game is client-side, so the server only does two things over the socket:
+// send the current leaderboard on connect, and persist + rebroadcast a score
+// when a player's run ends.
 export function registerSocketHandlers(io) {
-  const manager = new RoomManager(io);
-
   io.on('connection', (socket) => {
-    socket.on(EVENTS.JOIN, async ({ room, name } = {}) => {
-      manager.join(socket, String(room || 'lobby'), String(name || 'Anon'));
+    // Register listeners synchronously — the client may emit score:submit the
+    // instant it connects, so attach the handler before any await.
+    socket.on(EVENTS.SUBMIT, async (payload = {}) => {
+      const name = String(payload.name || 'Anon').slice(0, MAX_NAME);
+      const score = Math.max(0, Math.floor(Number(payload.score) || 0));
+      if (!score) return; // ignore empty runs
+
       try {
-        socket.emit(EVENTS.LEADERBOARD, await topScores());
+        await saveResults('solo', DEFAULT_GAME, [{ name, score }]);
+        io.emit(EVENTS.LEADERBOARD, await topScores()); // broadcast to everyone
       } catch (err) {
-        console.error('[socket] leaderboard fetch failed:', err.message);
+        console.error('[socket] score submit failed:', err.message);
       }
     });
 
-    socket.on(EVENTS.TAP, () => manager.tap(socket));
-    socket.on(EVENTS.LEAVE, () => manager.leave(socket));
-    socket.on('disconnect', () => manager.leave(socket));
+    // Send the current leaderboard for this client.
+    topScores()
+      .then((board) => socket.emit(EVENTS.LEADERBOARD, board))
+      .catch((err) => console.error('[socket] leaderboard fetch failed:', err.message));
   });
 }

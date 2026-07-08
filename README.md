@@ -1,17 +1,27 @@
-# playmcd
+# playmcd — Merge Cats Defender
 
-A real-time multiplayer arcade (à la playmcd.xyz). The bundled game is **Tap
-Battle**: players join a room, and when a round starts everyone taps as fast as
-they can for 15 seconds. Scores update live for everyone in the room, and final
-scores are written to a global leaderboard that broadcasts to all connected
-clients.
+A browser **tower-defense** game with a live global leaderboard, modeled on
+playmcd.xyz. Zombies march down lanes toward your base; buy cats that auto-shoot
+their lane, **merge** two same-level cats into a stronger one, and survive
+escalating waves (a boss every 5th wave). When the base falls, your score is
+submitted to a leaderboard that updates live for everyone connected.
+
+The game itself runs entirely in the browser (HTML5 canvas + a pure simulation);
+the server and database exist only for the leaderboard.
 
 ## Stack
 
-- **Next.js (App Router) + React 19** — UI and server-rendered pages.
+- **Next.js (App Router) + React 19** — UI and pages; the game is a `<canvas>`.
 - **Custom Node server** (`server.js`) — runs Next.js and **Socket.IO** on a
-  single port so the game uses real WebSockets.
+  single port for the live leaderboard.
 - **PostgreSQL** via `pg` — persists scores / leaderboard.
+
+## How to play
+
+Buy a cat and click an empty cell to place it in a lane. Cats auto-shoot zombies
+approaching from the right. Click one cat then another of the **same level** to
+merge them into a stronger form. Cover all five lanes and don't let zombies reach
+the base.
 
 ## Prerequisites
 
@@ -27,8 +37,8 @@ npm run db:setup            # apply db/schema.sql   (add: npm run db:seed for sa
 npm run dev                 # http://localhost:3000
 ```
 
-Open the app in two browser windows, join the same room with different names,
-and watch scores sync in real time.
+Enter a name, play a run, and your score appears on the leaderboard live — open
+a second window to watch the leaderboard update when a run ends.
 
 ## Scripts
 
