@@ -17,6 +17,7 @@ echo "Fetching Tiny Swords sprites into public/assets/tiny/ …"
 # rank is shown cosmetically at draw time (size/tint/aura/crown).
 fetch "$BASE/Blue%20Units/Archer/Archer_Idle.png"      archer_idle.png
 fetch "$BASE/Blue%20Units/Archer/Archer_Shoot.png"     archer_attack.png
+fetch "$BASE/Blue%20Units/Archer/Arrow.png"            arrow.png
 # Raiders: the Red horde besieging the wall (run cycle).
 fetch "$BASE/Red%20Units/Pawn/Pawn_Run.png"            red_pawn_run.png
 fetch "$BASE/Red%20Units/Warrior/Warrior_Run.png"      red_warrior_run.png
