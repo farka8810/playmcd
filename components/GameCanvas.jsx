@@ -1,35 +1,40 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { GRID, CAT_COST, CAT_LEVELS, ENEMY_SPRITES, BASE_HP } from '@/lib/td/config';
+import {
+  FIELD,
+  WALL,
+  STREET,
+  SLOTS,
+  CRITTER_LEVELS,
+  ENEMY_SPRITES,
+  RECRUIT_COST,
+  ABILITIES,
+} from '@/lib/td/config';
 import { Engine } from '@/lib/td/engine';
 
-const W = GRID.cols * GRID.cell;
-const H = GRID.rows * GRID.cell;
+const W = FIELD.width;
+const H = FIELD.height;
 
-// Drives the Engine with a requestAnimationFrame loop, renders each snapshot to
-// a <canvas> using the Kenney critter sprites, and turns clicks into buy/merge
-// actions. All game rules live in the Engine; this component is presentation +
-// input only.
+// Drives the Engine with a requestAnimationFrame loop, renders each snapshot to a
+// <canvas> (urban wall-defense scene using Kenney critter sprites), and overlays
+// an HTML HUD. All game rules live in the Engine; this is presentation + input.
 export default function GameCanvas({ onGameOver }) {
   const canvasRef = useRef(null);
   const engineRef = useRef(null);
-  const assetsRef = useRef(null); // { defenders, enemies[], boss }
-  const selRef = useRef(null);
-  const buyRef = useRef(false);
-  const hoverRef = useRef(null);
+  const assetsRef = useRef(null);
+  const selRef = useRef(null); // selected slot index
   const overFiredRef = useRef(false);
   const lastHudRef = useRef(0);
 
   const [hud, setHud] = useState(null);
-  const [buyMode, setBuyMode] = useState(false);
   const [sel, setSel] = useState(null);
 
   // Preload + tint sprites once.
   useEffect(() => {
     let alive = true;
     const names = [
-      ...CAT_LEVELS.slice(1).map((s) => s.sprite),
+      ...CRITTER_LEVELS.slice(1).map((s) => s.sprite),
       ...ENEMY_SPRITES.pool,
       ENEMY_SPRITES.boss,
     ];
@@ -39,7 +44,7 @@ export default function GameCanvas({ onGameOver }) {
     const finish = () => {
       if (!alive || done < uniq.length) return;
       const defenders = {};
-      for (const s of CAT_LEVELS.slice(1)) defenders[s.sprite] = imgs[s.sprite];
+      for (const s of CRITTER_LEVELS.slice(1)) defenders[s.sprite] = imgs[s.sprite];
       assetsRef.current = {
         defenders,
         enemies: ENEMY_SPRITES.pool.map((n) => tint(imgs[n], 'rgb(70,170,55)')),
@@ -63,11 +68,8 @@ export default function GameCanvas({ onGameOver }) {
   const start = useCallback(() => {
     engineRef.current = new Engine();
     selRef.current = null;
-    buyRef.current = false;
-    hoverRef.current = null;
     overFiredRef.current = false;
     setSel(null);
-    setBuyMode(false);
     setHud(engineRef.current.snapshot());
   }, []);
 
@@ -76,20 +78,12 @@ export default function GameCanvas({ onGameOver }) {
     const ctx = canvasRef.current.getContext('2d');
     let raf;
     let last = performance.now();
-
     const loop = (now) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       const eng = engineRef.current;
       eng.update(dt);
-      draw(ctx, eng.snapshot(), {
-        sel: selRef.current,
-        buyMode: buyRef.current,
-        hover: hoverRef.current,
-        assets: assetsRef.current,
-        now,
-      });
-
+      draw(ctx, eng.snapshot(), { sel: selRef.current, assets: assetsRef.current, now });
       if (now - lastHudRef.current > 66) {
         lastHudRef.current = now;
         setHud(eng.snapshot());
@@ -105,136 +99,160 @@ export default function GameCanvas({ onGameOver }) {
     return () => cancelAnimationFrame(raf);
   }, [start, onGameOver]);
 
-  const cellFromEvent = (e) => {
+  const slotFromEvent = (e) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
     const px = ((e.clientX - rect.left) * canvas.width) / rect.width;
     const py = ((e.clientY - rect.top) * canvas.height) / rect.height;
-    const col = Math.floor(px / GRID.cell);
-    const row = Math.floor(py / GRID.cell);
-    if (row < 0 || row >= GRID.rows || col < 0 || col >= GRID.cols) return null;
-    return { row, col };
+    const slots = engineRef.current.slots;
+    for (let i = 0; i < slots.length; i++) {
+      const dx = px - slots[i].x;
+      const dy = py - slots[i].y;
+      if (dx * dx + dy * dy <= (SLOTS.radius + 8) ** 2) return i;
+    }
+    return -1;
   };
 
   const handleClick = (e) => {
     const eng = engineRef.current;
-    const cell = cellFromEvent(e);
-    if (!cell || eng.phase === 'over') return;
-    const { row, col } = cell;
-
-    if (buyRef.current) {
-      eng.buyCat(row, col);
-      buyRef.current = false;
-      setBuyMode(false);
+    if (eng.phase === 'over') return;
+    const i = slotFromEvent(e);
+    if (i < 0 || !eng.critterInSlot(i)) {
+      selRef.current = null;
+      setSel(null);
       return;
     }
-
-    const clicked = eng.catAt(row, col);
     const s = selRef.current;
-    if (!clicked) {
+    if (s === null) {
+      selRef.current = i;
+      setSel(i);
+      return;
+    }
+    if (s === i) {
       selRef.current = null;
       setSel(null);
       return;
     }
-    if (!s) {
-      selRef.current = { row, col };
-      setSel({ row, col, level: clicked.level });
-      return;
-    }
-    if (s.row === row && s.col === col) {
-      selRef.current = null;
-      setSel(null);
-      return;
-    }
-    const merged = eng.merge(s.row, s.col, row, col);
+    const merged = eng.merge(s, i);
     if (merged) {
       selRef.current = null;
       setSel(null);
     } else {
-      selRef.current = { row, col };
-      setSel({ row, col, level: clicked.level });
+      selRef.current = i;
+      setSel(i);
     }
   };
 
-  const toggleBuy = () => {
-    const v = !buyRef.current;
-    buyRef.current = v;
-    setBuyMode(v);
-    selRef.current = null;
-    setSel(null);
+  const act = (fn) => () => {
+    fn();
+    setHud(engineRef.current.snapshot());
   };
 
-  const canBuy = hud && hud.coins >= CAT_COST && hud.phase !== 'over';
+  const canRecruit = hud && hud.coins >= RECRUIT_COST && hud.phase !== 'over';
+  const canRepair = hud && hud.coins >= WALL.upgradeCost && hud.wallHp < hud.wallMax && hud.phase !== 'over';
 
   return (
     <div className="game">
-      <div className="hud">
-        <Stat label="Score" value={hud?.score ?? 0} />
-        <Stat label="Coins" value={hud?.coins ?? 0} />
-        <Stat label="Wave" value={hud?.wave ?? 0} />
-        <Stat label="Base" value={'❤️'.repeat(Math.max(0, hud?.baseHp ?? BASE_HP))} />
-      </div>
-
-      <div className="game-stage">
+      <div className="game-stage" style={{ aspectRatio: `${W} / ${H}` }}>
         <canvas
           ref={canvasRef}
           width={W}
           height={H}
           className="board"
           onClick={handleClick}
-          onMouseMove={(e) => {
-            hoverRef.current = cellFromEvent(e);
-          }}
-          onMouseLeave={() => {
-            hoverRef.current = null;
-          }}
         />
 
-        {hud?.betweenWaves && hud.phase !== 'over' && (
-          <div className="stage-note">
-            Wave {hud.wave + 1} in {Math.ceil(hud.nextWaveIn)}s
+        {/* top HUD */}
+        <div className="hud-top">
+          <div className="pill coins">🪙 {hud?.coins ?? 0}</div>
+          <div className="pill timer">⏱ {mmss(hud?.time ?? 0)}</div>
+          <div className="hud-right">
+            <div className="pill skull">💀 {hud?.waveKills ?? 0}/{hud?.waveTotal ?? 0}</div>
+            <div className="pill gear" title="Wave">☰ W{hud?.wave ?? 0}</div>
           </div>
+        </div>
+
+        {/* bottom-left actions */}
+        <div className="hud-actions">
+          <button className="recruit" onClick={act(() => engineRef.current.recruit())} disabled={!canRecruit}>
+            <span className="ra-icon">🐾</span>
+            <span className="ra-text">
+              Recruit
+              <small>🪙 {RECRUIT_COST}</small>
+            </span>
+          </button>
+          <button className="wall-btn" onClick={act(() => engineRef.current.repairWall())} disabled={!canRepair}>
+            Repair Wall
+            <small>🪙 {WALL.upgradeCost}</small>
+          </button>
+        </div>
+
+        {/* bottom-right abilities */}
+        <div className="hud-cards">
+          <AbilityCard
+            icon={ABILITIES.bomb.icon}
+            label={ABILITIES.bomb.label}
+            charges={hud?.abilities?.bomb ?? 0}
+            onClick={act(() => engineRef.current.useBomb())}
+            disabled={hud?.phase === 'over'}
+          />
+          <AbilityCard
+            icon={ABILITIES.freeze.icon}
+            label={ABILITIES.freeze.label}
+            charges={hud?.abilities?.freeze ?? 0}
+            active={hud?.frozen}
+            onClick={act(() => engineRef.current.useFreeze())}
+            disabled={hud?.phase === 'over'}
+          />
+        </div>
+
+        {hud?.betweenWaves && hud.phase !== 'over' && (
+          <div className="stage-note">Wave {hud.wave + 1} in {Math.ceil(hud.nextWaveIn)}s</div>
         )}
 
         {hud?.phase === 'over' && (
           <div className="overlay">
-            <h2>Game Over</h2>
+            <h2>Wall Breached!</h2>
             <p>
-              You reached <strong>wave {hud.wave}</strong> with{' '}
-              <strong>{hud.score}</strong> points.
+              You survived <strong>{hud.wave} waves</strong> ·{' '}
+              <strong>{hud.kills} kills</strong> · <strong>{hud.score}</strong> pts
             </p>
-            <p className="muted small">Your score was submitted to the leaderboard.</p>
+            <p className="muted small">Score submitted to the leaderboard.</p>
             <button onClick={start}>Play again</button>
           </div>
         )}
       </div>
 
-      <div className="controls">
-        <button onClick={toggleBuy} disabled={!canBuy} className={buyMode ? 'active' : ''}>
-          {buyMode ? 'Click a cell…' : `Buy critter (${CAT_COST}🪙)`}
-        </button>
-        <span className="muted small">
-          {sel
-            ? `Selected ${CAT_LEVELS[sel.level].name} — click another same-level critter to merge`
-            : 'Buy critters, then merge two of the same kind to evolve them.'}
-        </span>
-      </div>
+      <p className="muted small hint">
+        {sel !== null
+          ? `Selected a Lv${hud?.slots?.find((s) => s.i === sel)?.level} critter — click another of the same level to merge.`
+          : 'Recruit critters into the slots, then click two of the same level to merge them.'}
+      </p>
     </div>
   );
 }
 
-function Stat({ label, value }) {
+function AbilityCard({ icon, label, charges, onClick, disabled, active }) {
   return (
-    <div className="stat">
-      <span className="stat-label">{label}</span>
-      <span className="stat-value">{value}</span>
-    </div>
+    <button
+      className={`card${active ? ' active' : ''}`}
+      onClick={onClick}
+      disabled={disabled || charges <= 0}
+      title={label}
+    >
+      <span className="card-icon">{icon}</span>
+      <span className="card-count">{charges}/{ABILITIES[label === 'TNT' ? 'bomb' : 'freeze'].charges}</span>
+    </button>
   );
+}
+
+function mmss(t) {
+  const s = Math.floor(t);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
 // ---------- canvas rendering ----------
 
-// Bakes a colored tint onto a sprite via an offscreen canvas (done once at load).
 function tint(img, color) {
   const c = document.createElement('canvas');
   c.width = img.naturalWidth || img.width || 1;
@@ -262,99 +280,158 @@ function circle(ctx, x, y, r, stroke) {
   else ctx.fill();
 }
 
-function draw(ctx, s, { sel, buyMode, hover, assets, now }) {
-  const cell = GRID.cell;
-  ctx.clearRect(0, 0, W, H);
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+}
 
-  // grassy lanes with a walking track down each row
-  for (let r = 0; r < GRID.rows; r++) {
-    ctx.fillStyle = r % 2 ? '#22381f' : '#1d3019';
-    ctx.fillRect(0, r * cell, W, cell);
-    ctx.fillStyle = 'rgba(0,0,0,0.14)';
-    ctx.fillRect(0, r * cell + cell * 0.28, W, cell * 0.44); // track band
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, r * cell);
-    ctx.lineTo(W, r * cell);
-    ctx.stroke();
+function draw(ctx, s, { sel, assets, now }) {
+  // ---- background: urban street ----
+  ctx.fillStyle = '#23262d';
+  ctx.fillRect(0, 0, W, H);
+  // sidewalks
+  ctx.fillStyle = '#31353d';
+  ctx.fillRect(0, 0, W, STREET.top);
+  ctx.fillRect(0, STREET.bottom, W, H - STREET.bottom);
+  // curbs
+  ctx.fillStyle = '#3f4550';
+  ctx.fillRect(0, STREET.top - 6, W, 6);
+  ctx.fillRect(0, STREET.bottom, W, 6);
+  // manhole + drain decorations on the sidewalks
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  for (let x = 360; x < W; x += 240) {
+    circle(ctx, x, STREET.top / 2, 22);
+    circle(ctx, x + 90, H - (H - STREET.bottom) / 2, 20);
   }
-  // base wall on the left (what the critters are protecting)
-  const wall = cell * 0.28;
-  ctx.fillStyle = '#3a2a1a';
-  ctx.fillRect(0, 0, wall, H);
-  ctx.fillStyle = 'rgba(108,140,255,0.18)';
-  ctx.fillRect(wall, 0, 6, H);
+  // dashed center line
+  ctx.strokeStyle = 'rgba(214,188,110,0.5)';
+  ctx.lineWidth = 5;
+  ctx.setLineDash([34, 26]);
+  ctx.beginPath();
+  ctx.moveTo(WALL.x + 40, H / 2);
+  ctx.lineTo(W, H / 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
 
-  // hover / buy target
-  if (hover) {
-    ctx.strokeStyle = buyMode ? '#8ac926' : '#ffe566';
+  // ---- deployment slots (dashed circles) ----
+  for (const slot of s.slots) {
+    const isSel = sel === slot.i;
+    ctx.strokeStyle = slot.level ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.28)';
     ctx.lineWidth = 3;
-    ctx.strokeRect(hover.col * cell + 2, hover.row * cell + 2, cell - 4, cell - 4);
+    ctx.setLineDash([7, 7]);
+    circle(ctx, slot.x, slot.y, SLOTS.radius, true);
+    ctx.setLineDash([]);
+    if (isSel) {
+      ctx.strokeStyle = '#ffe566';
+      ctx.lineWidth = 4;
+      circle(ctx, slot.x, slot.y, SLOTS.radius + 3, true);
+    }
   }
 
-  // shot tracers: a soft beam plus a travelling pellet
-  for (const t of s.tracers) {
-    const y = t.row * cell + cell / 2;
-    const x0 = t.fromCol * cell + cell / 2;
-    const x1 = t.toX * cell;
-    ctx.strokeStyle = 'rgba(255,229,102,0.55)';
-    ctx.lineWidth = 4;
+  // ---- wall (stacked boxes) + big HP bar ----
+  const wx = WALL.x - WALL.width;
+  ctx.fillStyle = '#8a5a34';
+  roundRect(ctx, wx, STREET.top - 10, WALL.width, STREET.bottom - STREET.top + 20, 6);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = 2;
+  for (let y = STREET.top; y < STREET.bottom; y += 46) {
     ctx.beginPath();
-    ctx.moveTo(x0, y);
-    ctx.lineTo(x1, y);
+    ctx.moveTo(wx, y);
+    ctx.lineTo(wx + WALL.width, y);
     ctx.stroke();
-    ctx.fillStyle = '#fff3b0';
-    circle(ctx, x1, y, 4);
   }
+  ctx.fillStyle = 'rgba(255,255,255,0.12)'; // tape
+  ctx.fillRect(WALL.x - WALL.width / 2 - 4, STREET.top - 10, 8, STREET.bottom - STREET.top + 20);
+  // vertical HP bar
+  const barX = WALL.x + 6;
+  const barY = STREET.top - 4;
+  const barH = STREET.bottom - STREET.top + 8;
+  const barW = 16;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  roundRect(ctx, barX, barY, barW, barH, 8);
+  ctx.fill();
+  const frac = s.wallMax ? s.wallHp / s.wallMax : 0;
+  const fillH = barH * frac;
+  ctx.fillStyle = frac > 0.5 ? '#8ce04a' : frac > 0.2 ? '#f4c145' : '#ef4444';
+  roundRect(ctx, barX, barY + (barH - fillH), barW, fillH, 8);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 15px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(String(s.wallHp), barX + barW / 2, barY - 6);
 
-  // zombies
+  // ---- zombies ----
   for (const z of s.zombies) {
-    const x = z.x * cell;
-    const y = z.row * cell + cell / 2 + Math.sin(now / 260 + z.id) * 2;
-    const size = z.boss ? cell * 0.92 : cell * 0.6;
+    const bob = Math.sin(now / 190 + z.id) * (z.attacking ? 4 : 2);
+    const y = z.y + bob;
+    const size = z.boss ? 120 : 62;
     const img = assets ? (z.boss ? assets.boss : assets.enemies[z.variant % assets.enemies.length]) : null;
-    if (!drawSprite(ctx, img, x, y, size)) {
+    if (!drawSprite(ctx, img, z.x, y, size)) {
       ctx.fillStyle = z.boss ? '#c1121f' : '#5a8f3a';
-      circle(ctx, x, y, z.boss ? 30 : 18);
+      circle(ctx, z.x, y, z.boss ? 34 : 20);
     }
-    // hp bar
-    const bw = size * 0.8;
-    const top = y - size / 2 - 8;
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(x - bw / 2, top, bw, 5);
+    if (z.flash) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      circle(ctx, z.x, y, size * 0.42);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    const bw = size * 0.7;
+    const top = y - size / 2 - 6;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(z.x - bw / 2, top, bw, 5);
     ctx.fillStyle = z.boss ? '#ff9f45' : '#7CFC66';
-    ctx.fillRect(x - bw / 2, top, bw * Math.max(0, z.hp / z.maxHp), 5);
+    ctx.fillRect(z.x - bw / 2, top, bw * Math.max(0, z.hp / z.maxHp), 5);
   }
 
-  // critters (defenders)
-  for (const c of s.cats) {
-    const x = c.col * cell + cell / 2;
-    const y = c.row * cell + cell / 2 + Math.sin(now / 380 + c.id) * 1.5;
-    const spec = CAT_LEVELS[c.level];
+  // ---- critters in slots ----
+  for (const slot of s.slots) {
+    if (!slot.level) continue;
+    const spec = CRITTER_LEVELS[slot.level];
+    const y = slot.y + Math.sin(now / 360 + slot.i) * 1.5;
     const img = assets ? assets.defenders[spec.sprite] : null;
-    if (!drawSprite(ctx, img, x, y, cell * 0.72)) {
-      ctx.fillStyle = spec.color;
-      circle(ctx, x, y, 26);
+    if (!drawSprite(ctx, img, slot.x, y, 62)) {
+      ctx.fillStyle = '#f4a259';
+      circle(ctx, slot.x, y, 24);
     }
-    // level badge
-    const bx = x + cell * 0.26;
-    const by = y + cell * 0.24;
-    ctx.fillStyle = spec.color;
-    circle(ctx, bx, by, 12);
-    ctx.strokeStyle = '#0b0f1a';
+    const bx = slot.x + 20;
+    const by = y + 18;
+    ctx.fillStyle = '#111';
+    circle(ctx, bx, by, 11);
+    ctx.strokeStyle = '#ffe566';
     ctx.lineWidth = 2;
-    circle(ctx, bx, by, 12, true);
-    ctx.fillStyle = '#0b0f1a';
+    circle(ctx, bx, by, 11, true);
+    ctx.fillStyle = '#ffe566';
     ctx.font = 'bold 12px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(String(c.level), bx, by + 0.5);
-    // selection ring
-    if (sel && sel.row === c.row && sel.col === c.col) {
-      ctx.strokeStyle = '#ffe566';
-      ctx.lineWidth = 3;
-      circle(ctx, x, y, cell * 0.42, true);
-    }
+    ctx.fillText(String(slot.level), bx, by + 0.5);
+  }
+
+  // ---- projectiles ----
+  for (const p of s.projectiles) {
+    const prog = 1 - p.ttl / 0.18;
+    const px = p.x + (p.tx - p.x) * prog;
+    const py = p.y + (p.ty - p.y) * prog;
+    ctx.fillStyle = '#fff3b0';
+    circle(ctx, px, py, 5);
+    ctx.strokeStyle = 'rgba(255,229,102,0.5)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(px, py);
+    ctx.stroke();
+  }
+
+  // ---- explosions ----
+  for (const e of s.explosions) {
+    const base = e.big ? 0.5 : 0.28;
+    const prog = 1 - e.ttl / base;
+    const r = (e.big ? 80 : 34) * prog;
+    ctx.strokeStyle = `rgba(255,180,60,${1 - prog})`;
+    ctx.lineWidth = 5;
+    circle(ctx, e.x, e.y, r, true);
   }
 }

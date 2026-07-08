@@ -161,7 +161,7 @@ button:disabled {
   margin-top: 1rem;
   align-items: start;
 }
-@media (max-width: 860px) {
+@media (max-width: 980px) {
   .game-layout {
     grid-template-columns: 1fr;
   }
@@ -169,59 +169,187 @@ button:disabled {
 
 .game {
   display: grid;
-  gap: 0.6rem;
-}
-
-.hud {
-  display: flex;
   gap: 0.5rem;
-  flex-wrap: wrap;
-}
-.stat {
-  flex: 1;
-  min-width: 90px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 0.5rem 0.75rem;
-  display: grid;
-  gap: 0.15rem;
-}
-.stat-label {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-}
-.stat-value {
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
 }
 
 .game-stage {
   position: relative;
-  line-height: 0;
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid #0c0e13;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  user-select: none;
 }
 .board {
+  display: block;
   width: 100%;
-  height: auto;
-  border-radius: 12px;
-  border: 1px solid var(--border);
+  height: 100%;
   cursor: pointer;
   touch-action: manipulation;
 }
 
-.stage-note {
+/* pills */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(16, 18, 24, 0.82);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  font-weight: 800;
+  font-size: clamp(0.7rem, 1.7vw, 0.95rem);
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+.pill.coins {
+  border-color: rgba(244, 201, 93, 0.5);
+}
+.pill.timer {
+  border-color: rgba(255, 229, 102, 0.6);
+}
+.pill.skull {
+  border-color: rgba(255, 92, 138, 0.45);
+}
+
+.hud-top {
   position: absolute;
-  top: 10px;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: clamp(0.5rem, 1.6vw, 1rem);
+  pointer-events: none;
+}
+.hud-top .pill {
+  pointer-events: auto;
+}
+.hud-top .timer {
+  position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(11, 15, 26, 0.85);
+}
+.hud-right {
+  display: flex;
+  gap: 0.4rem;
+}
+
+/* bottom-left actions */
+.hud-actions {
+  position: absolute;
+  left: clamp(0.5rem, 1.6vw, 1rem);
+  bottom: clamp(0.5rem, 1.6vw, 1rem);
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+.recruit,
+.wall-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 12px;
+  border: none;
+  padding: 0.5rem 0.85rem;
+  font-weight: 800;
+  cursor: pointer;
+  color: #0b1508;
+  line-height: 1.05;
+}
+.recruit {
+  background: linear-gradient(#8fe04a, #63c02f);
+  box-shadow: 0 4px 0 #3f8a1c;
+}
+.recruit .ra-icon {
+  font-size: 1.4rem;
+}
+.recruit .ra-text {
+  display: grid;
+  text-align: left;
+}
+.recruit small,
+.wall-btn small {
+  font-weight: 700;
+  opacity: 0.85;
+  font-size: 0.72rem;
+}
+.wall-btn {
+  flex-direction: column;
+  gap: 0.1rem;
+  background: linear-gradient(#c9ccd4, #9aa0ad);
+  box-shadow: 0 4px 0 #6b7180;
+  color: #1a1d24;
+}
+.recruit:disabled,
+.wall-btn:disabled {
+  filter: grayscale(0.5) brightness(0.8);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+/* bottom-right ability cards */
+.hud-cards {
+  position: absolute;
+  right: clamp(0.5rem, 1.6vw, 1rem);
+  bottom: clamp(0.5rem, 1.6vw, 1rem);
+  display: flex;
+  gap: 0.5rem;
+}
+.card {
+  position: relative;
+  width: clamp(48px, 8vw, 66px);
+  height: clamp(48px, 8vw, 66px);
+  border-radius: 12px;
+  border: 2px solid #caa53a;
+  background: linear-gradient(#ffd45e, #f0a93a);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 4px 0 #b07d21;
+}
+.card .card-icon {
+  font-size: clamp(1.2rem, 3vw, 1.9rem);
+  line-height: 1;
+}
+.card .card-count {
+  position: absolute;
+  bottom: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #5a3d13;
+  color: #ffe9b0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.card:disabled {
+  filter: grayscale(0.7) brightness(0.75);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.card.active {
+  outline: 3px solid #7fdfff;
+}
+
+.stage-note {
+  position: absolute;
+  top: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(11, 15, 26, 0.88);
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 0.3rem 0.9rem;
-  font-size: 0.85rem;
-  line-height: 1.2;
+  padding: 0.4rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 700;
 }
 
 .overlay {
@@ -230,23 +358,21 @@ button:disabled {
   display: grid;
   place-content: center;
   text-align: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
   background: rgba(11, 15, 26, 0.86);
-  border-radius: 12px;
   line-height: 1.4;
+  padding: 1rem;
 }
 .overlay h2 {
   margin: 0;
-  font-size: 2rem;
+  font-size: clamp(1.5rem, 4vw, 2.2rem);
+}
+.overlay button {
+  justify-self: center;
+  margin-top: 0.5rem;
 }
 
-.controls {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-.controls button.active {
-  background: var(--accent-2);
-  color: #fff;
+.hint {
+  margin: 0;
+  text-align: center;
 }
