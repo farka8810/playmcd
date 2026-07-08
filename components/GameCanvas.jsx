@@ -30,35 +30,56 @@ export default function GameCanvas({ onGameOver }) {
   const [hud, setHud] = useState(null);
   const [sel, setSel] = useState(null);
 
-  // Preload + tint sprites once.
+  // Preload the animated Tiny Swords spritesheets. Each sheet is a horizontal
+  // strip of square frames, so frameCount = width / height (computed on load).
   useEffect(() => {
     let alive = true;
-    const names = [
-      ...CRITTER_LEVELS.slice(1).map((s) => s.sprite),
-      ...ENEMY_SPRITES.pool,
-      ENEMY_SPRITES.boss,
+    const keys = [
+      'pawn_idle',
+      'archer_idle',
+      'archer_attack',
+      'monk_idle',
+      'lancer_idle',
+      'warrior_idle',
+      'warrior_attack',
+      'red_pawn_run',
+      'red_warrior_run',
+      'red_archer_run',
+      'red_lancer_run',
     ];
-    const uniq = [...new Set(names)];
-    const imgs = {};
+    const sheets = {};
     let done = 0;
+    const S = (k) => sheets[k];
     const finish = () => {
-      if (!alive || done < uniq.length) return;
-      const defenders = {};
-      for (const s of CRITTER_LEVELS.slice(1)) defenders[s.sprite] = imgs[s.sprite];
+      if (!alive || done < keys.length) return;
       assetsRef.current = {
-        defenders,
-        enemies: ENEMY_SPRITES.pool.map((n) => tint(imgs[n], 'rgb(70,170,55)')),
-        boss: tint(imgs[ENEMY_SPRITES.boss], 'rgb(200,45,45)'),
+        defenders: {
+          pawn: { idle: S('pawn_idle') },
+          archer: { idle: S('archer_idle'), attack: S('archer_attack') },
+          monk: { idle: S('monk_idle') },
+          lancer: { idle: S('lancer_idle') },
+          warrior: { idle: S('warrior_idle'), attack: S('warrior_attack') },
+        },
+        enemies: {
+          red_pawn: S('red_pawn_run'),
+          red_warrior: S('red_warrior_run'),
+          red_archer: S('red_archer_run'),
+          red_lancer: S('red_lancer_run'),
+        },
       };
     };
-    for (const n of uniq) {
+    for (const k of keys) {
       const img = new Image();
-      img.onload = img.onerror = () => {
+      img.onload = () => {
+        sheets[k] = { img, size: img.height, frames: Math.max(1, Math.round(img.width / img.height)) };
         done += 1;
         finish();
       };
-      img.src = `/assets/critters/${n}.png`;
-      imgs[n] = img;
+      img.onerror = () => {
+        done += 1;
+        finish();
+      };
+      img.src = `/assets/tiny/${k}.png`;
     }
     return () => {
       alive = false;
@@ -253,24 +274,28 @@ function mmss(t) {
 
 // ---------- canvas rendering ----------
 
-function tint(img, color) {
-  const c = document.createElement('canvas');
-  c.width = img.naturalWidth || img.width || 1;
-  c.height = img.naturalHeight || img.height || 1;
-  const cx = c.getContext('2d');
-  cx.drawImage(img, 0, 0);
-  cx.globalCompositeOperation = 'source-atop';
-  cx.globalAlpha = 0.5;
-  cx.fillStyle = color;
-  cx.fillRect(0, 0, c.width, c.height);
-  return c;
+// Draws one frame of an animated sheet, centered at (cx, cy). Frames are square
+// (size × size) laid out horizontally. `flip` mirrors horizontally (enemies face
+// left). idx is wrapped/floored so callers can pass a running value.
+function drawFrame(ctx, sheet, idx, cx, cy, displayH, flip) {
+  if (!sheet || !sheet.img.width) return false;
+  const s = sheet.size;
+  const scale = displayH / s;
+  const dw = s * scale;
+  const i = ((Math.floor(idx) % sheet.frames) + sheet.frames) % sheet.frames;
+  ctx.save();
+  ctx.translate(cx, cy);
+  if (flip) ctx.scale(-1, 1);
+  ctx.drawImage(sheet.img, i * s, 0, s, s, -dw / 2, -dw / 2, dw, dw);
+  ctx.restore();
+  return true;
 }
 
-function drawSprite(ctx, img, x, y, targetH) {
-  if (!img || !img.width) return false;
-  const scale = targetH / img.height;
-  ctx.drawImage(img, x - (img.width * scale) / 2, y - targetH / 2, img.width * scale, targetH);
-  return true;
+function shadow(ctx, x, y, rx) {
+  ctx.fillStyle = 'rgba(0,0,0,0.30)';
+  ctx.beginPath();
+  ctx.ellipse(x, y, rx, rx * 0.38, 0, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function circle(ctx, x, y, r, stroke) {
@@ -286,6 +311,7 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 function draw(ctx, s, { sel, assets, now }) {
+  ctx.imageSmoothingEnabled = false; // crisp pixel-art scaling
   // ---- background: urban street ----
   ctx.fillStyle = '#23262d';
   ctx.fillRect(0, 0, W, H);
@@ -362,52 +388,82 @@ function draw(ctx, s, { sel, assets, now }) {
   ctx.textBaseline = 'alphabetic';
   ctx.fillText(String(s.wallHp), barX + barW / 2, barY - 6);
 
-  // ---- zombies ----
+  // ---- enemies (animated Red units, facing left) ----
   for (const z of s.zombies) {
-    const bob = Math.sin(now / 190 + z.id) * (z.attacking ? 4 : 2);
-    const y = z.y + bob;
-    const size = z.boss ? 120 : 62;
-    const img = assets ? (z.boss ? assets.boss : assets.enemies[z.variant % assets.enemies.length]) : null;
-    if (!drawSprite(ctx, img, z.x, y, size)) {
-      ctx.fillStyle = z.boss ? '#c1121f' : '#5a8f3a';
+    const y = z.y;
+    const displayH = z.boss ? 190 : 104;
+    const name = z.boss ? ENEMY_SPRITES.boss : ENEMY_SPRITES.pool[z.variant % ENEMY_SPRITES.pool.length];
+    const sheet = assets ? assets.enemies[name] : null;
+    shadow(ctx, z.x, y + displayH * 0.24, displayH * 0.24);
+    if (!drawFrame(ctx, sheet, now / 90 + z.id * 2, z.x, y - displayH * 0.06, displayH, true)) {
+      ctx.fillStyle = z.boss ? '#c1121f' : '#b23a48';
       circle(ctx, z.x, y, z.boss ? 34 : 20);
     }
     if (z.flash) {
+      ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      circle(ctx, z.x, y, size * 0.42);
-      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = 'rgba(255,90,90,0.5)';
+      circle(ctx, z.x, y - displayH * 0.06, displayH * 0.2);
+      ctx.restore();
     }
-    const bw = size * 0.7;
-    const top = y - size / 2 - 6;
+    const bw = displayH * 0.34;
+    const top = y - displayH * 0.4;
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(z.x - bw / 2, top, bw, 5);
-    ctx.fillStyle = z.boss ? '#ff9f45' : '#7CFC66';
+    ctx.fillStyle = z.boss ? '#ff9f45' : '#ff5c5c';
     ctx.fillRect(z.x - bw / 2, top, bw * Math.max(0, z.hp / z.maxHp), 5);
   }
 
-  // ---- critters in slots ----
+  // ---- defenders in slots (animated Blue units, facing right) ----
   for (const slot of s.slots) {
     if (!slot.level) continue;
     const spec = CRITTER_LEVELS[slot.level];
-    const y = slot.y + Math.sin(now / 360 + slot.i) * 1.5;
-    const img = assets ? assets.defenders[spec.sprite] : null;
-    if (!drawSprite(ctx, img, slot.x, y, 62)) {
-      ctx.fillStyle = '#f4a259';
-      circle(ctx, slot.x, y, 24);
+    const anim = assets ? assets.defenders[spec.sprite] : null;
+    const elite = spec.elite;
+    const displayH = elite ? 130 : 108;
+    const y = slot.y;
+    shadow(ctx, slot.x, y + displayH * 0.2, displayH * 0.22);
+    if (elite) {
+      ctx.strokeStyle = 'rgba(255,215,90,0.7)';
+      ctx.lineWidth = 3;
+      circle(ctx, slot.x, y, SLOTS.radius + 2, true);
     }
-    const bx = slot.x + 20;
-    const by = y + 18;
+    let drawn = false;
+    if (anim) {
+      let sheet;
+      let idx;
+      if (slot.atk > 0 && anim.attack) {
+        sheet = anim.attack;
+        idx = ((0.28 - slot.atk) / 0.28) * sheet.frames;
+      } else {
+        sheet = anim.idle;
+        idx = now / 120 + slot.i * 3;
+      }
+      drawn = drawFrame(ctx, sheet, idx, slot.x, y - displayH * 0.05, displayH, false);
+    }
+    if (!drawn) {
+      ctx.fillStyle = '#5a7cff';
+      circle(ctx, slot.x, y, 22);
+    }
+    // level badge
+    const bx = slot.x + 18;
+    const by = y + 16;
     ctx.fillStyle = '#111';
     circle(ctx, bx, by, 11);
-    ctx.strokeStyle = '#ffe566';
+    ctx.strokeStyle = elite ? '#ffd45e' : '#ffe566';
     ctx.lineWidth = 2;
     circle(ctx, bx, by, 11, true);
-    ctx.fillStyle = '#ffe566';
+    ctx.fillStyle = elite ? '#ffd45e' : '#ffe566';
     ctx.font = 'bold 12px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(String(slot.level), bx, by + 0.5);
+    // selection ring (on top of the sprite)
+    if (sel === slot.i) {
+      ctx.strokeStyle = '#ffe566';
+      ctx.lineWidth = 3;
+      circle(ctx, slot.x, y, SLOTS.radius + 5, true);
+    }
   }
 
   // ---- projectiles ----

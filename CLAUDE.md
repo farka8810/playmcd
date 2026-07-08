@@ -4,23 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-playmcd is **Merge Critters Defender**, a browser tower-defense game (Plants-vs-
-Zombies-style) with a live global leaderboard, inspired by playmcd.xyz (which is
-a cats-vs-zombies TD; this is a distinct cute-animals take). Zombie critters walk
-left along lanes toward the base; the player buys critters that auto-shoot down
-their lane, and merges two same-level critters into a stronger animal (rabbit →
-penguin → parrot → monkey → panda → elephant). Waves escalate, every 5th wave
-sends a boss, and when the base HP hits 0 the run ends and the score is submitted
-to a leaderboard that updates live for everyone.
+playmcd is **Merge Critters Defender**, a browser **wall-defense** game with a
+live global leaderboard, inspired by playmcd.xyz. On a single urban street, the
+player recruits units into fixed deployment SLOTS behind a WALL on the left; the
+Red horde streams in from the right, and units auto-attack them. Merge two
+same-level units to evolve a stronger one (pawn → archer → monk → lancer → warrior
+→ champion). Waves escalate with a boss every 5th; TNT/Freeze abilities help.
+When the wall's HP hits 0 the run ends and the score is submitted to a leaderboard
+that updates live for everyone.
 
 The entire game simulation runs **in the browser**. The server/DB exist only for
 the leaderboard.
 
-**Art**: character sprites are Kenney's *Animal Pack* (CC0, public domain) in
-`public/assets/critters/` — committed and free to use. Level→sprite mapping lives
-in `lib/td/config.js` (`CAT_LEVELS[].sprite`, `ENEMY_SPRITES`); enemies are the
-same sprites tinted green (bosses red) by the renderer. Everything else (board,
-effects, HUD) is drawn in code.
+**Art**: animated **Tiny Swords** sprites (Pixel Frog) — Blue units as defenders,
+Red units as enemies. Free to use but **not redistributable**, so they're **not
+committed**: `scripts/fetch-assets.sh` downloads them into `public/assets/tiny/`
+(gitignored). Each sheet is a horizontal strip of square frames; the renderer
+computes frameCount = width/height on load and plays idle/run/attack cycles (see
+`GameCanvas.jsx` `drawFrame`). Level→sprite mapping is in `lib/td/config.js`
+(`CRITTER_LEVELS[].sprite`, `ENEMY_SPRITES`). The board, HUD, and effects are
+drawn in code. Note: sprites need `ctx.imageSmoothingEnabled = false` to stay
+crisp. **If sprites are missing, run the fetch script.**
 
 ## Commands
 

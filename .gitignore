@@ -15,3 +15,7 @@ npm-debug.log*
 # editor
 .vscode
 .idea
+
+# Tiny Swords art (Pixel Frog) — free to use but not redistributable.
+# Run scripts/fetch-assets.sh to populate this locally.
+/public/assets/tiny/

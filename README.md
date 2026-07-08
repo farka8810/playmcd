@@ -22,10 +22,10 @@ the server and database exist only for the leaderboard.
 
 ## How to play
 
-Buy a cat and click an empty cell to place it in a lane. Cats auto-shoot zombies
-approaching from the right. Click one cat then another of the **same level** to
-merge them into a stronger form. Cover all five lanes and don't let zombies reach
-the base.
+**Recruit** critters into the deployment slots behind your wall; they auto-attack
+the Red horde marching in from the right. Click one critter then another of the
+**same level** to merge them into a stronger unit. Use **TNT** and **Freeze** when
+overwhelmed, **Repair Wall** when it's low — don't let the wall fall.
 
 ## Prerequisites
 
@@ -36,10 +36,15 @@ the base.
 
 ```bash
 npm install
-cp .env.example .env        # then edit DATABASE_URL
-npm run db:setup            # apply db/schema.sql   (add: npm run db:seed for sample rows)
-npm run dev                 # http://localhost:3000
+bash scripts/fetch-assets.sh  # download the Tiny Swords sprites (not committed)
+cp .env.example .env          # then edit DATABASE_URL
+npm run db:setup              # apply db/schema.sql  (add: npm run db:seed for sample rows)
+npm run dev                   # http://localhost:3000
 ```
+
+Character art is **Tiny Swords** by [Pixel Frog](https://pixelfrog-assets.itch.io/tiny-swords)
+— free to use but not redistributable, so it isn't committed; `fetch-assets.sh`
+pulls it into `public/assets/tiny/`.
 
 Enter a name, play a run, and your score appears on the leaderboard live — open
 a second window to watch the leaderboard update when a run ends.
