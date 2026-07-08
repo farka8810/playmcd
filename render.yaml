@@ -1,0 +1,30 @@
+# Render Blueprint — one-click deploy for Merge Archers: Kingdom Defense.
+# In the Render dashboard: New + → "Blueprint" → pick this repo. It provisions a
+# free Postgres database and a Node web service, wires DATABASE_URL between them,
+# fetches the Tiny Swords art at build (npm run build), and starts the custom
+# Next.js + Socket.IO server (npm start). The schema is created automatically on
+# first start (ensureSchema), so there is no manual database step.
+
+databases:
+  - name: playmcd-db
+    plan: free
+    databaseName: playmcd
+    user: playmcd
+
+services:
+  - type: web
+    name: playmcd
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: playmcd-db
+          property: connectionString

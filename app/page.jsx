@@ -17,45 +17,79 @@ export default function Home() {
 
   return (
     <>
-      <h1>🐾 Merge Critters Defender</h1>
-      <p className="muted">
-        Defend the base from endless zombie hordes. Place critters, merge them into
-        stronger forms, survive the waves — and climb the live leaderboard.
+      <section className="hero">
+        <div className="hero-overlay" />
+        <div className="hero-inner">
+          <p className="hero-kicker">⚔️ A pixel kingdom wall-defense</p>
+          <h1 className="hero-title">
+            MERGE<br />ARCHERS
+          </h1>
+          <p className="hero-sub">👑 Kingdom Defense</p>
+
+          <form className="hero-form" onSubmit={play}>
+            <div className="archer-avatar" aria-hidden="true" />
+            <input
+              aria-label="Your name"
+              placeholder="Enter your name…"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={20}
+            />
+            <button type="submit" disabled={!name.trim()}>
+              Play ▶
+            </button>
+          </form>
+          <p className="hero-note">Free to play · live global leaderboard</p>
+        </div>
+      </section>
+
+      <p className="hero-desc">
+        The horde is marching on the kingdom wall. Deploy royal archers, merge them
+        to promote higher ranks, and hold the line wave after wave — then climb the
+        live leaderboard.
       </p>
 
-      <section className="panel" style={{ marginTop: '1.5rem' }}>
-        <h2>Start a run</h2>
-        <form className="row" onSubmit={play}>
-          <input
-            aria-label="Your name"
-            placeholder="Your name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={20}
-          />
-          <button type="submit" disabled={!name.trim()}>
-            Play
-          </button>
-        </form>
-      </section>
+      <div className="grid feature-grid">
+        <section className="panel feature">
+          <span className="feature-ico">🏹</span>
+          <h3>Recruit</h3>
+          <p className="muted">Place royal archers on the rampart slots behind the wall.</p>
+        </section>
+        <section className="panel feature">
+          <span className="feature-ico">✨</span>
+          <h3>Merge &amp; Promote</h3>
+          <p className="muted">Combine two same-rank archers into a stronger, longer-ranged one.</p>
+        </section>
+        <section className="panel feature">
+          <span className="feature-ico">🛡️</span>
+          <h3>Defend</h3>
+          <p className="muted">Survive escalating waves — a warlord boss storms in every 5th.</p>
+        </section>
+        <section className="panel feature">
+          <span className="feature-ico">🏆</span>
+          <h3>Compete</h3>
+          <p className="muted">Your score hits the live global leaderboard the moment you fall.</p>
+        </section>
+      </div>
 
-      <section className="panel" style={{ marginTop: '1rem' }}>
+      <section className="panel" style={{ marginTop: '1.25rem' }}>
         <h2>How to play</h2>
-        <ul className="how">
+        <ol className="how how-steps">
           <li>
-            <strong>Buy a critter</strong> and click an empty cell to place it in a lane.
+            <strong>Recruit an archer</strong> onto an empty rampart slot behind the wall.
           </li>
-          <li>Critters automatically shoot zombies approaching from the right.</li>
+          <li>Archers automatically loose arrows at raiders marching in from the right.</li>
           <li>
-            <strong>Merge</strong> two same-level critters (click one, then the other) to
-            evolve a stronger form.
+            <strong>Drag</strong> an archer onto another of the same rank to
+            <strong> merge &amp; promote</strong> it (Recruit → Legendary), or onto an empty
+            slot to reposition.
           </li>
-          <li>Every 5th wave sends a <strong>boss</strong>. Don’t let the base fall!</li>
-        </ul>
+          <li>Every 5th wave sends a <strong>warlord boss</strong>. Don’t let the wall fall!</li>
+        </ol>
       </section>
 
-      <p style={{ marginTop: '1.5rem' }}>
-        <Link href="/leaderboard">View the global leaderboard →</Link>
+      <p className="home-foot">
+        <Link href="/leaderboard">🏆 View the global leaderboard →</Link>
       </p>
     </>
   );

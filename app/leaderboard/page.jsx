@@ -16,11 +16,11 @@ export default async function LeaderboardPage() {
 
   return (
     <>
-      <h1>Leaderboard</h1>
+      <h1>🏆 Leaderboard</h1>
       {error ? (
         <p className="muted">Database unavailable: {error}</p>
       ) : (
-        <Leaderboard entries={entries} title="Top 20 — Merge Critters Defender" />
+        <Leaderboard entries={entries} title="Top 20 — Merge Archers: Kingdom Defense" />
       )}
       <p style={{ marginTop: '1.5rem' }}>
         <Link href="/">← Home</Link>

@@ -4,27 +4,45 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-playmcd is **Merge Critters Defender**, a browser **wall-defense** game with a
-live global leaderboard, inspired by playmcd.xyz. On a single urban street, the
-player recruits units into fixed deployment SLOTS behind a WALL on the left; the
-Red horde streams in from the right, and units auto-attack them. Merge two
-same-level units to evolve a stronger one (pawn → archer → monk → lancer → warrior
-→ champion). Waves escalate with a boss every 5th; TNT/Freeze abilities help.
-When the wall's HP hits 0 the run ends and the score is submitted to a leaderboard
-that updates live for everyone.
+playmcd is **Merge Archers — Kingdom Defense**, a browser **wall-defense** game
+with a live global leaderboard, themed as a bright cartoon **kingdom**. On a
+grassy field before the stone kingdom WALL, the player recruits **royal archers**
+into fixed deployment SLOTS behind the wall on the left; the Red raider horde
+streams in from the right, and the archers auto-loose arrows at them. Every
+defender is an **archer** — merging two same-rank archers **promotes** one to a
+higher rank (Recruit Archer → Archer → Sharpshooter → Ranger → Royal Marksman →
+Legendary Archer). A unit never changes class; higher ranks are the same Archer
+sprite shown bigger, colour-washed, with an aura/crown. Waves escalate with a
+warlord boss every 5th; Catapult/Frost abilities help. When the wall's HP hits 0
+the kingdom falls, the run ends, and the score is submitted to a leaderboard that
+updates live for everyone.
 
 The entire game simulation runs **in the browser**. The server/DB exist only for
 the leaderboard.
 
-**Art**: animated **Tiny Swords** sprites (Pixel Frog) — Blue units as defenders,
-Red units as enemies. Free to use but **not redistributable**, so they're **not
-committed**: `scripts/fetch-assets.sh` downloads them into `public/assets/tiny/`
-(gitignored). Each sheet is a horizontal strip of square frames; the renderer
-computes frameCount = width/height on load and plays idle/run/attack cycles (see
-`GameCanvas.jsx` `drawFrame`). Level→sprite mapping is in `lib/td/config.js`
-(`CRITTER_LEVELS[].sprite`, `ENEMY_SPRITES`). The board, HUD, and effects are
-drawn in code. Note: sprites need `ctx.imageSmoothingEnabled = false` to stay
-crisp. **If sprites are missing, run the fetch script.**
+**Art**: animated **Tiny Swords** sprites (Pixel Frog) — the Blue **Archer** as
+every defender rank, Red units as the raiders. Free to use but **not
+redistributable**, so they're **not committed**: `scripts/fetch-assets.sh`
+downloads them into `public/assets/tiny/` (gitignored). Each sheet is a
+horizontal strip of square frames; the renderer computes frameCount =
+width/height on load and plays idle/run/attack cycles (see `GameCanvas.jsx`
+`drawFrame`). Rank cosmetics (`scale`/`tint`/`aura`/`crown`) and enemy sprites
+are in `lib/td/config.js` (`CRITTER_LEVELS[]`, `ENEMY_SPRITES`); higher-rank
+tinting uses an offscreen buffer (`drawFrame`'s `tint` path). The game background
+uses **real Tiny Swords terrain**: the seamless interior grass cell of
+`tilemap.png` tiled across the field (`tileGrass`), plus tree/bush/rock/cloud
+decoration sprites (`drawDecorations`, `drawCloudSprites`) and a soft sky/hills,
+with a brown/tan castle wall + terracotta gatehouse drawn in code
+(`drawKingdomWall`). These terrain images live in `assets/tiny/` (gitignored,
+fetched by `scripts/fetch-assets.sh`). Archers are **drag-and-drop**: drag one
+onto an empty slot to move, onto a same-rank archer to merge/promote, or onto a
+different-rank one to swap (`Engine.moveCritter`; the drag ghost + drop-target
+highlight are in `GameCanvas`). The website uses a committed pixel-art image
+`public/assets/bg/castle.png` as the faded page backdrop (`body::before`) and the
+landing hero banner (`app/globals.css`); it's committed (only `assets/tiny/`
+sprites/terrain are gitignored). Note: sprites need
+`ctx.imageSmoothingEnabled = false` to stay crisp. **If sprites are missing, run
+the fetch script.**
 
 ## Commands
 

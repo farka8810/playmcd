@@ -65,6 +65,35 @@ test('merge is capped at the max level', () => {
   assert.equal(e.merge(0, 1), false);
 });
 
+test('moveCritter relocates an archer to an empty slot', () => {
+  const e = new Engine();
+  e.recruit(); // slot 0
+  assert.equal(e.moveCritter(0, 5), 'move');
+  assert.equal(e.critterInSlot(0), undefined);
+  assert.equal(e.critterInSlot(5).level, 1);
+});
+
+test('moveCritter onto a same-rank archer merges (promotes)', () => {
+  const e = new Engine();
+  e.recruit();
+  e.recruit();
+  assert.equal(e.moveCritter(0, 1), 'merge');
+  assert.equal(e.critters.length, 1);
+  assert.equal(e.critterInSlot(1).level, 2);
+});
+
+test('moveCritter onto a different-rank archer swaps them', () => {
+  const e = new Engine();
+  e.coins = 1000;
+  e.recruit();
+  e.recruit();
+  e.merge(0, 1); // L2 in slot 1
+  e.recruit(); // L1 in slot 0
+  assert.equal(e.moveCritter(0, 1), 'swap');
+  assert.equal(e.critterInSlot(0).level, 2);
+  assert.equal(e.critterInSlot(1).level, 1);
+});
+
 test('a critter shoots a zombie in range and a kill awards coins/score/kills', () => {
   const e = new Engine();
   e.recruit(); // slot 0 near the wall

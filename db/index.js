@@ -1,4 +1,7 @@
 import pg from 'pg';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
 const { Pool } = pg;
 
@@ -18,4 +21,13 @@ export function getPool() {
 
 export function query(text, params) {
   return getPool().query(text, params);
+}
+
+// Applies the (idempotent) schema so a fresh deploy needs no manual db:setup.
+// Safe to call on every server start; CREATE ... IF NOT EXISTS is a no-op once
+// the table/indexes exist.
+export async function ensureSchema() {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const schema = await readFile(join(here, 'schema.sql'), 'utf8');
+  await query(schema);
 }
