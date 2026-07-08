@@ -17,9 +17,9 @@ export default function Home() {
 
   return (
     <>
-      <h1>🐱 Merge Cats Defender</h1>
+      <h1>🐾 Merge Critters Defender</h1>
       <p className="muted">
-        Defend the base from endless zombie hordes. Place cats, merge them into
+        Defend the base from endless zombie hordes. Place critters, merge them into
         stronger forms, survive the waves — and climb the live leaderboard.
       </p>
 
@@ -43,12 +43,12 @@ export default function Home() {
         <h2>How to play</h2>
         <ul className="how">
           <li>
-            <strong>Buy a cat</strong> and click an empty cell to place it in a lane.
+            <strong>Buy a critter</strong> and click an empty cell to place it in a lane.
           </li>
-          <li>Cats automatically shoot zombies approaching from the right.</li>
+          <li>Critters automatically shoot zombies approaching from the right.</li>
           <li>
-            <strong>Merge</strong> two same-level cats (click one, then the other) to
-            forge a stronger form.
+            <strong>Merge</strong> two same-level critters (click one, then the other) to
+            evolve a stronger form.
           </li>
           <li>Every 5th wave sends a <strong>boss</strong>. Don’t let the base fall!</li>
         </ul>

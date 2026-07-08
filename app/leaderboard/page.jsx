@@ -20,7 +20,7 @@ export default async function LeaderboardPage() {
       {error ? (
         <p className="muted">Database unavailable: {error}</p>
       ) : (
-        <Leaderboard entries={entries} title="Top 20 — Tap Battle" />
+        <Leaderboard entries={entries} title="Top 20 — Merge Critters Defender" />
       )}
       <p style={{ marginTop: '1.5rem' }}>
         <Link href="/">← Home</Link>

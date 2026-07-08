@@ -1,27 +1,64 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { GRID, CAT_COST, CAT_LEVELS, BASE_HP } from '@/lib/td/config';
+import { GRID, CAT_COST, CAT_LEVELS, ENEMY_SPRITES, BASE_HP } from '@/lib/td/config';
 import { Engine } from '@/lib/td/engine';
 
 const W = GRID.cols * GRID.cell;
 const H = GRID.rows * GRID.cell;
 
 // Drives the Engine with a requestAnimationFrame loop, renders each snapshot to
-// a <canvas>, and turns clicks into buy/merge actions. All game rules live in
-// the Engine; this component is purely presentation + input.
+// a <canvas> using the Kenney critter sprites, and turns clicks into buy/merge
+// actions. All game rules live in the Engine; this component is presentation +
+// input only.
 export default function GameCanvas({ onGameOver }) {
   const canvasRef = useRef(null);
   const engineRef = useRef(null);
-  const selRef = useRef(null); // {row,col} of the selected cat
-  const buyRef = useRef(false); // "place a new cat" mode
-  const hoverRef = useRef(null); // {row,col} under the cursor
+  const assetsRef = useRef(null); // { defenders, enemies[], boss }
+  const selRef = useRef(null);
+  const buyRef = useRef(false);
+  const hoverRef = useRef(null);
   const overFiredRef = useRef(false);
   const lastHudRef = useRef(0);
 
   const [hud, setHud] = useState(null);
   const [buyMode, setBuyMode] = useState(false);
   const [sel, setSel] = useState(null);
+
+  // Preload + tint sprites once.
+  useEffect(() => {
+    let alive = true;
+    const names = [
+      ...CAT_LEVELS.slice(1).map((s) => s.sprite),
+      ...ENEMY_SPRITES.pool,
+      ENEMY_SPRITES.boss,
+    ];
+    const uniq = [...new Set(names)];
+    const imgs = {};
+    let done = 0;
+    const finish = () => {
+      if (!alive || done < uniq.length) return;
+      const defenders = {};
+      for (const s of CAT_LEVELS.slice(1)) defenders[s.sprite] = imgs[s.sprite];
+      assetsRef.current = {
+        defenders,
+        enemies: ENEMY_SPRITES.pool.map((n) => tint(imgs[n], 'rgb(70,170,55)')),
+        boss: tint(imgs[ENEMY_SPRITES.boss], 'rgb(200,45,45)'),
+      };
+    };
+    for (const n of uniq) {
+      const img = new Image();
+      img.onload = img.onerror = () => {
+        done += 1;
+        finish();
+      };
+      img.src = `/assets/critters/${n}.png`;
+      imgs[n] = img;
+    }
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const start = useCallback(() => {
     engineRef.current = new Engine();
@@ -45,9 +82,14 @@ export default function GameCanvas({ onGameOver }) {
       last = now;
       const eng = engineRef.current;
       eng.update(dt);
-      draw(ctx, eng.snapshot(), selRef.current, buyRef.current, hoverRef.current);
+      draw(ctx, eng.snapshot(), {
+        sel: selRef.current,
+        buyMode: buyRef.current,
+        hover: hoverRef.current,
+        assets: assetsRef.current,
+        now,
+      });
 
-      // Throttle HUD React updates to ~15/s (the canvas already animates at 60).
       if (now - lastHudRef.current > 66) {
         lastHudRef.current = now;
         setHud(eng.snapshot());
@@ -104,7 +146,6 @@ export default function GameCanvas({ onGameOver }) {
       setSel(null);
       return;
     }
-    // two different cats selected -> try to merge, else select the new one
     const merged = eng.merge(s.row, s.col, row, col);
     if (merged) {
       selRef.current = null;
@@ -131,7 +172,7 @@ export default function GameCanvas({ onGameOver }) {
         <Stat label="Score" value={hud?.score ?? 0} />
         <Stat label="Coins" value={hud?.coins ?? 0} />
         <Stat label="Wave" value={hud?.wave ?? 0} />
-        <Stat label="Base" value={'❤'.repeat(Math.max(0, hud?.baseHp ?? BASE_HP))} />
+        <Stat label="Base" value={'❤️'.repeat(Math.max(0, hud?.baseHp ?? BASE_HP))} />
       </div>
 
       <div className="game-stage">
@@ -170,12 +211,12 @@ export default function GameCanvas({ onGameOver }) {
 
       <div className="controls">
         <button onClick={toggleBuy} disabled={!canBuy} className={buyMode ? 'active' : ''}>
-          {buyMode ? 'Click a cell…' : `Buy cat (${CAT_COST}🪙)`}
+          {buyMode ? 'Click a cell…' : `Buy critter (${CAT_COST}🪙)`}
         </button>
         <span className="muted small">
           {sel
-            ? `Selected L${sel.level} — click another L${sel.level} cat to merge`
-            : 'Select two same-level cats to merge them.'}
+            ? `Selected ${CAT_LEVELS[sel.level].name} — click another same-level critter to merge`
+            : 'Buy critters, then merge two of the same kind to evolve them.'}
         </span>
       </div>
     </div>
@@ -191,7 +232,28 @@ function Stat({ label, value }) {
   );
 }
 
-// ---- canvas rendering (pure, reads a snapshot) ----
+// ---------- canvas rendering ----------
+
+// Bakes a colored tint onto a sprite via an offscreen canvas (done once at load).
+function tint(img, color) {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth || img.width || 1;
+  c.height = img.naturalHeight || img.height || 1;
+  const cx = c.getContext('2d');
+  cx.drawImage(img, 0, 0);
+  cx.globalCompositeOperation = 'source-atop';
+  cx.globalAlpha = 0.5;
+  cx.fillStyle = color;
+  cx.fillRect(0, 0, c.width, c.height);
+  return c;
+}
+
+function drawSprite(ctx, img, x, y, targetH) {
+  if (!img || !img.width) return false;
+  const scale = targetH / img.height;
+  ctx.drawImage(img, x - (img.width * scale) / 2, y - targetH / 2, img.width * scale, targetH);
+  return true;
+}
 
 function circle(ctx, x, y, r, stroke) {
   ctx.beginPath();
@@ -200,90 +262,99 @@ function circle(ctx, x, y, r, stroke) {
   else ctx.fill();
 }
 
-function draw(ctx, s, sel, buyMode, hover) {
+function draw(ctx, s, { sel, buyMode, hover, assets, now }) {
   const cell = GRID.cell;
   ctx.clearRect(0, 0, W, H);
 
-  // lanes
+  // grassy lanes with a walking track down each row
   for (let r = 0; r < GRID.rows; r++) {
-    for (let c = 0; c < GRID.cols; c++) {
-      ctx.fillStyle = (r + c) % 2 ? '#12213b' : '#0f1b30';
-      ctx.fillRect(c * cell, r * cell, cell, cell);
-    }
+    ctx.fillStyle = r % 2 ? '#22381f' : '#1d3019';
+    ctx.fillRect(0, r * cell, W, cell);
+    ctx.fillStyle = 'rgba(0,0,0,0.14)';
+    ctx.fillRect(0, r * cell + cell * 0.28, W, cell * 0.44); // track band
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, r * cell);
+    ctx.lineTo(W, r * cell);
+    ctx.stroke();
   }
-  // base zone glow (left edge the zombies are heading for)
-  ctx.fillStyle = 'rgba(108,140,255,0.12)';
-  ctx.fillRect(0, 0, cell * 0.5, H);
+  // base wall on the left (what the critters are protecting)
+  const wall = cell * 0.28;
+  ctx.fillStyle = '#3a2a1a';
+  ctx.fillRect(0, 0, wall, H);
+  ctx.fillStyle = 'rgba(108,140,255,0.18)';
+  ctx.fillRect(wall, 0, 6, H);
 
   // hover / buy target
   if (hover) {
-    ctx.strokeStyle = buyMode ? '#8ac926' : '#6c8cff';
+    ctx.strokeStyle = buyMode ? '#8ac926' : '#ffe566';
     ctx.lineWidth = 3;
     ctx.strokeRect(hover.col * cell + 2, hover.row * cell + 2, cell - 4, cell - 4);
   }
 
-  // shot tracers
+  // shot tracers: a soft beam plus a travelling pellet
   for (const t of s.tracers) {
     const y = t.row * cell + cell / 2;
-    ctx.strokeStyle = 'rgba(255,229,102,0.9)';
-    ctx.lineWidth = 3;
+    const x0 = t.fromCol * cell + cell / 2;
+    const x1 = t.toX * cell;
+    ctx.strokeStyle = 'rgba(255,229,102,0.55)';
+    ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.moveTo(t.fromCol * cell + cell / 2, y);
-    ctx.lineTo(t.toX * cell, y);
+    ctx.moveTo(x0, y);
+    ctx.lineTo(x1, y);
     ctx.stroke();
+    ctx.fillStyle = '#fff3b0';
+    circle(ctx, x1, y, 4);
   }
 
   // zombies
   for (const z of s.zombies) {
     const x = z.x * cell;
-    const y = z.row * cell + cell / 2;
-    const R = z.boss ? 30 : 18;
-    ctx.fillStyle = z.boss ? '#c1121f' : '#5a8f3a';
-    circle(ctx, x, y, R);
-    ctx.fillStyle = '#0b0f1a';
-    circle(ctx, x - 6, y - 4, 3);
-    circle(ctx, x + 6, y - 4, 3);
-    const w = R * 2;
-    ctx.fillStyle = '#3a0b0b';
-    ctx.fillRect(x - R, y - R - 8, w, 4);
-    ctx.fillStyle = '#ff5c5c';
-    ctx.fillRect(x - R, y - R - 8, w * Math.max(0, z.hp / z.maxHp), 4);
+    const y = z.row * cell + cell / 2 + Math.sin(now / 260 + z.id) * 2;
+    const size = z.boss ? cell * 0.92 : cell * 0.6;
+    const img = assets ? (z.boss ? assets.boss : assets.enemies[z.variant % assets.enemies.length]) : null;
+    if (!drawSprite(ctx, img, x, y, size)) {
+      ctx.fillStyle = z.boss ? '#c1121f' : '#5a8f3a';
+      circle(ctx, x, y, z.boss ? 30 : 18);
+    }
+    // hp bar
+    const bw = size * 0.8;
+    const top = y - size / 2 - 8;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(x - bw / 2, top, bw, 5);
+    ctx.fillStyle = z.boss ? '#ff9f45' : '#7CFC66';
+    ctx.fillRect(x - bw / 2, top, bw * Math.max(0, z.hp / z.maxHp), 5);
   }
 
-  // cats
+  // critters (defenders)
   for (const c of s.cats) {
     const x = c.col * cell + cell / 2;
-    const y = c.row * cell + cell / 2;
+    const y = c.row * cell + cell / 2 + Math.sin(now / 380 + c.id) * 1.5;
     const spec = CAT_LEVELS[c.level];
+    const img = assets ? assets.defenders[spec.sprite] : null;
+    if (!drawSprite(ctx, img, x, y, cell * 0.72)) {
+      ctx.fillStyle = spec.color;
+      circle(ctx, x, y, 26);
+    }
+    // level badge
+    const bx = x + cell * 0.26;
+    const by = y + cell * 0.24;
     ctx.fillStyle = spec.color;
-    circle(ctx, x, y, 26);
-    // ears
-    ctx.beginPath();
-    ctx.moveTo(x - 18, y - 16);
-    ctx.lineTo(x - 8, y - 32);
-    ctx.lineTo(x - 2, y - 16);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(x + 18, y - 16);
-    ctx.lineTo(x + 8, y - 32);
-    ctx.lineTo(x + 2, y - 16);
-    ctx.closePath();
-    ctx.fill();
-    // eyes
+    circle(ctx, bx, by, 12);
+    ctx.strokeStyle = '#0b0f1a';
+    ctx.lineWidth = 2;
+    circle(ctx, bx, by, 12, true);
     ctx.fillStyle = '#0b0f1a';
-    circle(ctx, x - 8, y - 2, 3);
-    circle(ctx, x + 8, y - 2, 3);
-    // level label
-    ctx.font = 'bold 13px system-ui, sans-serif';
+    ctx.font = 'bold 12px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('L' + c.level, x, y + 15);
+    ctx.fillText(String(c.level), bx, by + 0.5);
     // selection ring
     if (sel && sel.row === c.row && sel.col === c.col) {
       ctx.strokeStyle = '#ffe566';
       ctx.lineWidth = 3;
-      circle(ctx, x, y, 31, true);
+      circle(ctx, x, y, cell * 0.42, true);
     }
   }
 }

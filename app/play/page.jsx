@@ -36,7 +36,7 @@ function Play() {
 
   return (
     <>
-      <h1>Merge Cats Defender</h1>
+      <h1>Merge Critters Defender</h1>
       <p className="muted">
         Playing as <strong>{name}</strong> · leaderboard {connected ? 'live' : 'connecting…'}
       </p>

@@ -1,10 +1,14 @@
-# playmcd — Merge Cats Defender
+# playmcd — Merge Critters Defender
 
-A browser **tower-defense** game with a live global leaderboard, modeled on
-playmcd.xyz. Zombies march down lanes toward your base; buy cats that auto-shoot
-their lane, **merge** two same-level cats into a stronger one, and survive
-escalating waves (a boss every 5th wave). When the base falls, your score is
-submitted to a leaderboard that updates live for everyone connected.
+A browser **tower-defense** game with a live global leaderboard, inspired by
+playmcd.xyz. Zombie critters march down lanes toward your base; buy animals that
+auto-shoot their lane, **merge** two same-level animals into a stronger one
+(rabbit → penguin → … → elephant), and survive escalating waves (a boss every
+5th wave). When the base falls, your score is submitted to a leaderboard that
+updates live for everyone connected.
+
+Character art is Kenney's *Animal Pack* (CC0). See
+`public/assets/critters/CREDITS.md`.
 
 The game itself runs entirely in the browser (HTML5 canvas + a pure simulation);
 the server and database exist only for the leaderboard.
