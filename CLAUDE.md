@@ -12,10 +12,34 @@ streams in from the right, and the archers auto-loose arrows at them. Every
 defender is an **archer** — merging two same-rank archers **promotes** one to a
 higher rank (Recruit Archer → Archer → Sharpshooter → Ranger → Royal Marksman →
 Legendary Archer). A unit never changes class; higher ranks are the same Archer
-sprite shown bigger, colour-washed, with an aura/crown. Waves escalate with a
-warlord boss every 5th; Catapult/Frost abilities help. When the wall's HP hits 0
-the kingdom falls, the run ends, and the score is submitted to a leaderboard that
-updates live for everyone.
+sprite shown bigger, colour-washed, with an aura/crown. The horde has four
+**raider classes** with real behaviour differences (Pawn; fast fragile Lancer;
+tanky Warrior; a Red Archer that halts at standoff range and volleys the wall),
+unlocking over the first waves (`ENEMY_TYPES`). Every 5th wave brings a
+**rotating boss** with a big named HP bar — Warlord Gruk, Berserker Morg
+(enrages below half HP), Summoner Vex (conjures pawn minions) (`BOSSES`).
+Archer shots can **crit** (`CRIT` + Eagle Eye upgrade) and rapid kills chain a
+**combo** score multiplier (`COMBO`). Catapult/Frost abilities help; Frost fully
+stalls movement *and* wall damage. Moment-to-moment controls (Recruit, Repair
+Wall, the Catapult/Frost cards) sit in a **command bar below the canvas** so
+nothing overlaps the rampart slots. After **every** cleared wave the sim pauses
+on an **intermission shop** (below the command bar) where the player restocks
+Catapult/Frost charges, buys **permanent upgrades** (wall HP, archer damage,
+fire rate, crit chance, gold income), then hits **Continue** — only the opening
+wave auto-starts. When the wall's HP hits 0 the kingdom falls, the run ends, a
+redesigned game-over sheet shows stats/personal-best (localStorage
+`playmcd:best`)/live global rank, and the score is submitted to a leaderboard
+that updates live for everyone.
+
+**Juice**: the engine emits one-shot events (`takeEvents()` — hit/kill/merge/
+wave/boss/enrage/summon/bossDown/wallCrack/over) that `GameCanvas` turns into
+floating damage numbers (gold crits), coin/combo popups, particle bursts,
+decaying screen shake, wave/boss announcement banners, and synthesized SFX.
+Sounds are generated with the Web Audio API in `lib/audio/sfx.js` (no asset
+files, per-effect rate limiting); music (`public/assets/audio/`, CC0, committed)
+and SFX have separate mute toggles in `components/BgMusic.jsx`, persisted in
+localStorage. In dev (`NODE_ENV !== 'production'`) the live Engine is exposed as
+`window.__mcd` for console/e2e driving.
 
 The entire game simulation runs **in the browser**. The server/DB exist only for
 the leaderboard.
@@ -93,7 +117,12 @@ All gameplay lives in the browser, split into a pure simulation and a renderer:
   injectable `rng`. It exposes player actions (`buyCat`, `merge`), a single
   `update(dt)` tick, and `snapshot()` for rendering. Being pure makes it
   deterministic and unit-testable — `test/engine.test.js` drives it directly with
-  no browser. **Game rules change here.**
+  no browser. **Game rules change here.** Wave flow: a cleared wave sets
+  `awaitingNext` (the shop is open; passive gold pauses and no wave auto-starts);
+  `buyAbility` (restock consumables), `buyUpgrade` (permanent levels — `wall`,
+  `damage`, `fireRate`, `income`, with escalating `upgradeCost`), and
+  `continueToNextWave` are the shop actions. Upgrades drive `damageMult` /
+  `fireRateMult` / `wallMax` / gold rate globally (config `UPGRADES`).
 - **`lib/td/config.js`**: all tunable balance (grid size, economy, cat levels,
   zombie/wave scaling). Balancing never touches engine logic. `CAT_LEVELS` is
   indexed by level; index 0 is unused.

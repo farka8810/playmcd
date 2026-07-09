@@ -7,21 +7,23 @@ import {
   STREET,
   SLOTS,
   CRITTER_LEVELS,
-  ENEMY_SPRITES,
   RECRUIT_COST,
   ABILITIES,
+  UPGRADES,
 } from '@/lib/td/config';
 import { Engine } from '@/lib/td/engine';
+import { sfx } from '@/lib/audio/sfx';
 
 const W = FIELD.width;
 const H = FIELD.height;
+const BEST_KEY = 'playmcd:best';
 
 // Drives the Engine with a requestAnimationFrame loop, renders each snapshot to a
 // <canvas> (a cartoon kingdom wall-defense scene using Tiny Swords sprites), and
 // overlays an HTML HUD. Every defender is an Archer; merge rank is shown purely
 // through size/tint/aura/crown. All game rules live in the Engine; this is
 // presentation + input.
-export default function GameCanvas({ onGameOver }) {
+export default function GameCanvas({ onGameOver, leaderboard = [] }) {
   const canvasRef = useRef(null);
   const engineRef = useRef(null);
   const assetsRef = useRef(null);
@@ -29,9 +31,17 @@ export default function GameCanvas({ onGameOver }) {
   const dragRef = useRef(null); // { from, level, x, y, over } while dragging an archer
   const overFiredRef = useRef(false);
   const lastHudRef = useRef(0);
+  // Transient juice state, mutated at 60fps outside React:
+  // floaters (damage numbers / popups), sparks (particles), shake magnitude.
+  const fxRef = useRef({ floaters: [], sparks: [], shake: 0 });
+  const leaderboardRef = useRef(leaderboard);
+  leaderboardRef.current = leaderboard;
+  const bannerTimer = useRef(null);
 
   const [hud, setHud] = useState(null);
   const [sel, setSel] = useState(null); // from-slot while dragging (for the hint)
+  const [banner, setBanner] = useState(null); // wave / boss announcement
+  const [overInfo, setOverInfo] = useState(null); // { best, isNew, rank }
 
   // Preload the animated Tiny Swords spritesheets. Each sheet is a horizontal
   // strip of square frames, so frameCount = width / height (computed on load).
@@ -116,9 +126,101 @@ export default function GameCanvas({ onGameOver }) {
     engineRef.current = new Engine();
     dragRef.current = null;
     overFiredRef.current = false;
+    fxRef.current = { floaters: [], sparks: [], shake: 0 };
     setSel(null);
+    setBanner(null);
+    setOverInfo(null);
     setHud(engineRef.current.snapshot());
+    // Dev-only hook so the engine can be driven from the console / e2e checks.
+    if (process.env.NODE_ENV !== 'production') window.__mcd = engineRef.current;
   }, []);
+
+  // Flash a wave/boss announcement across the battlefield for a couple seconds.
+  const pushBanner = useCallback((b) => {
+    setBanner({ ...b, key: Date.now() });
+    clearTimeout(bannerTimer.current);
+    bannerTimer.current = setTimeout(() => setBanner(null), 2400);
+  }, []);
+
+  // Translate discrete engine events into juice: floaters, sparks, shake, SFX.
+  const handleEvents = useCallback(
+    (evs) => {
+      const fx = fxRef.current;
+      const jitter = () => (Math.random() - 0.5) * 18;
+      for (const ev of evs) {
+        switch (ev.t) {
+          case 'hit':
+            fx.floaters.push({
+              x: ev.x + jitter(),
+              y: ev.y - 46,
+              vy: -46,
+              ttl: ev.crit ? 0.9 : 0.6,
+              text: ev.crit ? `CRIT ${ev.dmg}!` : `-${ev.dmg}`,
+              color: ev.crit ? '#ffd45e' : '#ffffff',
+              size: ev.crit ? 26 : 17,
+            });
+            sfx.shoot();
+            if (ev.crit) sfx.hit(true);
+            break;
+          case 'kill':
+            fx.floaters.push({ x: ev.x, y: ev.y - 14, vy: -34, ttl: 0.8, text: `+${ev.coin}🪙`, color: '#ffe08a', size: 16 });
+            if (ev.combo >= 3)
+              fx.floaters.push({
+                x: ev.x,
+                y: ev.y - 72,
+                vy: -28,
+                ttl: 0.9,
+                text: `COMBO ×${ev.combo}`,
+                color: '#ff9e3d',
+                size: Math.min(34, 18 + ev.combo),
+              });
+            burst(fx, ev.x, ev.y, ev.boss ? 26 : 10, '#ffb35c');
+            sfx.kill(ev.combo);
+            if (ev.boss) fx.shake = Math.max(fx.shake, 16);
+            break;
+          case 'merge':
+            burst(fx, ev.x, ev.y - 20, 18, '#ffe566');
+            fx.floaters.push({ x: ev.x, y: ev.y - 70, vy: -30, ttl: 1.1, text: `★ ${CRITTER_LEVELS[ev.level].name}!`, color: '#8ce04a', size: 20 });
+            sfx.merge();
+            break;
+          case 'wave':
+            pushBanner(
+              ev.boss
+                ? { title: `☠ ${ev.boss.toUpperCase()} ☠`, sub: `Boss Wave ${ev.wave} — hold the line!`, boss: true }
+                : { title: `WAVE ${ev.wave}`, sub: 'The horde approaches…' }
+            );
+            sfx.wave();
+            break;
+          case 'boss':
+            fx.shake = Math.max(fx.shake, 13);
+            sfx.boss();
+            break;
+          case 'enrage':
+            fx.floaters.push({ x: ev.x, y: ev.y - 100, vy: -26, ttl: 1.2, text: 'ENRAGED!', color: '#ff5c5c', size: 30 });
+            fx.shake = Math.max(fx.shake, 10);
+            sfx.enrage();
+            break;
+          case 'summon':
+            fx.floaters.push({ x: ev.x, y: ev.y - 80, vy: -24, ttl: 0.8, text: '✨ reinforcements', color: '#c78bff', size: 15 });
+            sfx.summon();
+            break;
+          case 'bossDown':
+            fx.floaters.push({ x: ev.x, y: ev.y - 60, vy: -30, ttl: 1.4, text: `${ev.name} DEFEATED!`, color: '#ffd45e', size: 26 });
+            fx.shake = Math.max(fx.shake, 16);
+            break;
+          case 'wallCrack':
+            fx.shake = Math.max(fx.shake, 11);
+            sfx.wallCrack();
+            break;
+          case 'over':
+            fx.shake = Math.max(fx.shake, 18);
+            sfx.over();
+            break;
+        }
+      }
+    },
+    [pushBanner]
+  );
 
   useEffect(() => {
     start();
@@ -130,7 +232,23 @@ export default function GameCanvas({ onGameOver }) {
       last = now;
       const eng = engineRef.current;
       eng.update(dt);
+      handleEvents(eng.takeEvents());
+
+      const fx = fxRef.current;
+      // decaying screen shake
+      fx.shake = Math.max(0, fx.shake - 42 * dt);
+      const sx = (Math.random() - 0.5) * fx.shake;
+      const sy = (Math.random() - 0.5) * fx.shake;
+      ctx.save();
+      if (fx.shake > 0.5) {
+        ctx.fillStyle = '#1a1408'; // hide edge gaps while shaking
+        ctx.fillRect(0, 0, W, H);
+        ctx.translate(sx, sy);
+      }
       draw(ctx, eng.snapshot(), { drag: dragRef.current, assets: assetsRef.current, terrain: terrainRef.current, now });
+      drawFx(ctx, fx, dt);
+      ctx.restore();
+
       if (now - lastHudRef.current > 66) {
         lastHudRef.current = now;
         setHud(eng.snapshot());
@@ -138,13 +256,30 @@ export default function GameCanvas({ onGameOver }) {
       if (eng.phase === 'over' && !overFiredRef.current) {
         overFiredRef.current = true;
         setHud(eng.snapshot());
+        // personal best + live global rank for the game-over screen
+        let best = 0;
+        try {
+          best = Number(localStorage.getItem(BEST_KEY) || 0);
+        } catch {}
+        const isNew = eng.score > best;
+        if (isNew) {
+          try {
+            localStorage.setItem(BEST_KEY, String(eng.score));
+          } catch {}
+        }
+        const board = leaderboardRef.current;
+        const rank = board && board.length ? 1 + board.filter((e) => e.best > eng.score).length : null;
+        setOverInfo({ best: Math.max(best, eng.score), isNew, rank });
         onGameOver?.({ score: eng.score, wave: eng.wave });
       }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [start, onGameOver]);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(bannerTimer.current);
+    };
+  }, [start, onGameOver, handleEvents]);
 
   const canvasPos = (e) => {
     const canvas = canvasRef.current;
@@ -201,13 +336,26 @@ export default function GameCanvas({ onGameOver }) {
     }
   };
 
-  const act = (fn) => () => {
-    fn();
+  // Run a player action; on success play its sound, then refresh the HUD.
+  const act = (fn, sound) => () => {
+    const ok = fn();
+    if (ok && sound) sound();
     setHud(engineRef.current.snapshot());
   };
 
   const canRecruit = hud && hud.coins >= RECRUIT_COST && hud.phase !== 'over';
   const canRepair = hud && hud.coins >= WALL.upgradeCost && hud.wallHp < hud.wallMax && hud.phase !== 'over';
+
+  const buyAbility = (key) => act(() => engineRef.current.buyAbility(key), sfx.buy)();
+  const buyUpgrade = (key) => act(() => engineRef.current.buyUpgrade(key), sfx.buy)();
+  const continueWave = act(() => engineRef.current.continueToNextWave());
+  const useBomb = act(() => {
+    const ok = engineRef.current.useBomb();
+    if (ok) fxRef.current.shake = Math.max(fxRef.current.shake, 13);
+    return ok;
+  }, sfx.boom);
+  const useFreeze = act(() => engineRef.current.useFreeze(), sfx.freeze);
+  const over = hud?.phase === 'over';
 
   return (
     <div className="game">
@@ -225,7 +373,11 @@ export default function GameCanvas({ onGameOver }) {
 
         {/* top HUD */}
         <div className="hud-top">
-          <div className="pill coins">🪙 {hud?.coins ?? 0}</div>
+          <div className="hud-left">
+            <div className="pill coins">🪙 {hud?.coins ?? 0}</div>
+            <div className="pill score">⭐ {(hud?.score ?? 0).toLocaleString()}</div>
+            {(hud?.combo ?? 0) >= 2 && <div className="pill combo">🔥 ×{hud.combo}</div>}
+          </div>
           <div className="pill timer">⏱ {mmss(hud?.time ?? 0)}</div>
           <div className="hud-right">
             <div className="pill skull">💀 {hud?.waveKills ?? 0}/{hud?.waveTotal ?? 0}</div>
@@ -233,54 +385,100 @@ export default function GameCanvas({ onGameOver }) {
           </div>
         </div>
 
-        {/* bottom-left actions */}
-        <div className="hud-actions">
-          <button className="recruit" onClick={act(() => engineRef.current.recruit())} disabled={!canRecruit}>
-            <span className="ra-icon">🏹</span>
-            <span className="ra-text">
-              Recruit
-              <small>🪙 {RECRUIT_COST}</small>
+        {/* boss health bar */}
+        {hud?.boss && !over && (
+          <div className={`boss-bar${hud.boss.enraged ? ' enraged' : ''}`}>
+            <span className="boss-name">
+              {hud.boss.enraged ? '😡' : '💀'} {hud.boss.name}
             </span>
-          </button>
-          <button className="wall-btn" onClick={act(() => engineRef.current.repairWall())} disabled={!canRepair}>
-            Repair Wall
-            <small>🪙 {WALL.upgradeCost}</small>
-          </button>
-        </div>
+            <div className="boss-hp">
+              <div style={{ width: `${Math.max(0, (hud.boss.hp / hud.boss.maxHp) * 100)}%` }} />
+            </div>
+          </div>
+        )}
 
-        {/* bottom-right abilities */}
-        <div className="hud-cards">
-          <AbilityCard
-            akey="bomb"
-            charges={hud?.abilities?.bomb ?? 0}
-            onClick={act(() => engineRef.current.useBomb())}
-            disabled={hud?.phase === 'over'}
-          />
-          <AbilityCard
-            akey="freeze"
-            charges={hud?.abilities?.freeze ?? 0}
-            active={hud?.frozen}
-            onClick={act(() => engineRef.current.useFreeze())}
-            disabled={hud?.phase === 'over'}
-          />
-        </div>
+        {/* wave / boss announcement banner */}
+        {banner && (
+          <div key={banner.key} className={`wave-banner${banner.boss ? ' boss' : ''}`}>
+            <div className="wb-title">{banner.title}</div>
+            {banner.sub && <div className="wb-sub">{banner.sub}</div>}
+          </div>
+        )}
 
-        {hud?.betweenWaves && hud.phase !== 'over' && (
+        {hud?.betweenWaves && !hud.awaitingNext && !over && (
           <div className="stage-note">Wave {hud.wave + 1} in {Math.ceil(hud.nextWaveIn)}s</div>
         )}
 
-        {hud?.phase === 'over' && (
+        {hud?.awaitingNext && !over && (
+          <div className="stage-note cleared">🎉 Wave {hud.wave} cleared — spend gold below ⬇</div>
+        )}
+
+        {over && (
           <div className="overlay">
             <h2>👑 The Kingdom Has Fallen!</h2>
-            <p>
-              You defended <strong>{hud.wave} waves</strong> ·{' '}
-              <strong>{hud.kills} raiders slain</strong> · <strong>{hud.score}</strong> pts
-            </p>
-            <p className="muted small">Score submitted to the leaderboard.</p>
-            <button onClick={start}>Defend again</button>
+            <div className="go-stats">
+              <div className="go-row">
+                <span>Waves survived</span>
+                <strong>{hud.wave}</strong>
+              </div>
+              <div className="go-row">
+                <span>Raiders slain</span>
+                <strong>{hud.kills}</strong>
+              </div>
+              <div className="go-row">
+                <span>Best combo</span>
+                <strong>×{hud.maxCombo}</strong>
+              </div>
+              <div className="go-row total">
+                <span>Score</span>
+                <strong>{hud.score.toLocaleString()}</strong>
+              </div>
+            </div>
+            {overInfo?.isNew ? (
+              <div className="new-best">⭐ NEW PERSONAL BEST!</div>
+            ) : (
+              overInfo && <p className="muted small">Personal best: {overInfo.best.toLocaleString()}</p>
+            )}
+            {overInfo?.rank && (
+              <p className="go-rank">
+                Global rank <strong>#{overInfo.rank}</strong>
+              </p>
+            )}
+            <p className="muted small">Score submitted to the live leaderboard.</p>
+            <button onClick={start}>⚔️ Defend Again</button>
           </div>
         )}
       </div>
+
+      {/* command bar: moment-to-moment controls, kept below the battlefield so
+          the rampart slots (and the archers on them) are never obscured. */}
+      <div className="cmd-bar">
+        <button className="recruit" onClick={act(() => engineRef.current.recruit(), sfx.buy)} disabled={!canRecruit}>
+          <span className="ra-icon">🏹</span>
+          <span className="ra-text">
+            Recruit
+            <small>🪙 {RECRUIT_COST}</small>
+          </span>
+        </button>
+        <button className="wall-btn" onClick={act(() => engineRef.current.repairWall(), sfx.buy)} disabled={!canRepair}>
+          <span className="ra-icon">🛡️</span>
+          <span className="ra-text">
+            Repair Wall
+            <small>🪙 {WALL.upgradeCost}</small>
+          </span>
+        </button>
+        <div className="cmd-spacer" />
+        <AbilityCard akey="bomb" charges={hud?.abilities?.bomb ?? 0} onClick={useBomb} disabled={over} />
+        <AbilityCard
+          akey="freeze"
+          charges={hud?.abilities?.freeze ?? 0}
+          active={hud?.frozen}
+          onClick={useFreeze}
+          disabled={over}
+        />
+      </div>
+
+      {!over && <ShopPanel hud={hud} onBuyAbility={buyAbility} onBuyUpgrade={buyUpgrade} onContinue={continueWave} />}
 
       <p className="muted small hint">
         {sel !== null
@@ -288,6 +486,92 @@ export default function GameCanvas({ onGameOver }) {
           : 'Recruit archers, then drag one onto another of the same rank to merge & promote — or onto an empty slot to reposition.'}
       </p>
     </div>
+  );
+}
+
+// Intermission shop shown below the battlefield. Restocking consumables, buying
+// permanent upgrades, and the Continue button are only enabled between waves
+// (hud.awaitingNext); during combat it sits locked as a dimmed preview.
+function ShopPanel({ hud, onBuyAbility, onBuyUpgrade, onContinue }) {
+  const open = !!hud?.awaitingNext;
+  const coins = hud?.coins ?? 0;
+  const wave = hud?.wave ?? 0;
+  return (
+    <div className={`shop${open ? ' open' : ''}`}>
+      <div className="shop-head">
+        <span className="shop-title">{open ? `⚔️ Wave ${wave} cleared!` : '🛡️ Merchant’s Rest'}</span>
+        <div className="shop-head-right">
+          {open ? (
+            <span className="shop-treasury">🪙 {coins}</span>
+          ) : (
+            <span className="shop-locked">Spend gold between waves</span>
+          )}
+          {/* Continue lives up here, next to the treasury, so it's visible the
+              moment the shop opens — no scrolling past the upgrade list. */}
+          <button className="shop-continue" onClick={onContinue} disabled={!open}>
+            ▶ Wave {wave + 1}
+          </button>
+        </div>
+      </div>
+
+      <p className="shop-label">Consumables · restock</p>
+      <div className="shop-items">
+        {['bomb', 'freeze'].map((key) => {
+          const a = ABILITIES[key];
+          const owned = hud?.abilities?.[key] ?? 0;
+          const maxed = owned >= a.max;
+          return (
+            <div className="shop-item" key={key}>
+              <span className="shop-ico">{a.icon}</span>
+              <span className="shop-info">
+                <span className="shop-name">{a.label}</span>
+                <span className="shop-desc">{a.desc}</span>
+                <span className="shop-owned">
+                  Stock {owned}/{a.max}
+                </span>
+              </span>
+              <button className="shop-buy" onClick={() => onBuyAbility(key)} disabled={!open || maxed || coins < a.price}>
+                {maxed ? 'Max' : `🪙 ${a.price}`}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="shop-label">Permanent upgrades</p>
+      <div className="shop-items shop-upgrades">
+        {Object.keys(UPGRADES).map((key) => {
+          const u = UPGRADES[key];
+          const info = hud?.upgrades?.[key] ?? { level: 0, cost: u.baseCost };
+          const maxed = info.level >= u.max;
+          return (
+            <div className="shop-item" key={key}>
+              <span className="shop-ico upg">{u.icon}</span>
+              <span className="shop-info">
+                <span className="shop-name">{u.label}</span>
+                <span className="shop-desc">{u.desc}</span>
+                <LevelPips level={info.level} max={u.max} />
+              </span>
+              <button className="shop-buy" onClick={() => onBuyUpgrade(key)} disabled={!open || maxed || coins < info.cost}>
+                {maxed ? 'Max' : `🪙 ${info.cost}`}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+    </div>
+  );
+}
+
+// Compact level indicator: `max` little pips, `level` of them lit.
+function LevelPips({ level, max }) {
+  return (
+    <span className="lvl-pips" title={`Level ${level} / ${max}`}>
+      {Array.from({ length: max }, (_, i) => (
+        <span key={i} className={`pip${i < level ? ' on' : ''}`} />
+      ))}
+    </span>
   );
 }
 
@@ -301,7 +585,7 @@ function AbilityCard({ akey, charges, onClick, disabled, active }) {
       title={ability.label}
     >
       <span className="card-icon">{ability.icon}</span>
-      <span className="card-count">{charges}/{ability.charges}</span>
+      <span className="card-count">×{charges}</span>
     </button>
   );
 }
@@ -309,6 +593,51 @@ function AbilityCard({ akey, charges, onClick, disabled, active }) {
 function mmss(t) {
   const s = Math.floor(t);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+// ---------- transient FX (floaters + particle sparks + shake) ----------
+
+// Spray `n` square sparks outward from (x, y).
+function burst(fx, x, y, n, color) {
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + Math.random() * 0.7;
+    const sp = 60 + Math.random() * 120;
+    fx.sparks.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40, ttl: 0.4 + Math.random() * 0.35, color });
+  }
+}
+
+// Advance + render floaters (rising damage numbers/labels) and sparks.
+function drawFx(ctx, fx, dt) {
+  for (const p of fx.sparks) {
+    p.ttl -= dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 190 * dt; // gravity
+  }
+  fx.sparks = fx.sparks.filter((p) => p.ttl > 0);
+  for (const p of fx.sparks) {
+    ctx.globalAlpha = Math.min(1, p.ttl * 2.4);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+  }
+
+  for (const f of fx.floaters) {
+    f.ttl -= dt;
+    f.y += f.vy * dt;
+  }
+  fx.floaters = fx.floaters.filter((f) => f.ttl > 0);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  for (const f of fx.floaters) {
+    ctx.globalAlpha = Math.min(1, f.ttl / 0.35);
+    ctx.font = `800 ${f.size}px ui-sans-serif, system-ui, sans-serif`;
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(20,10,0,0.75)';
+    ctx.strokeText(f.text, f.x, f.y);
+    ctx.fillStyle = f.color;
+    ctx.fillText(f.text, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
 }
 
 // ---------- canvas rendering ----------
@@ -1022,8 +1351,7 @@ function draw(ctx, s, { drag, assets, terrain, now }) {
   for (const z of s.zombies) {
     const y = z.y;
     const displayH = z.boss ? 190 : 104;
-    const name = z.boss ? ENEMY_SPRITES.boss : ENEMY_SPRITES.pool[z.variant % ENEMY_SPRITES.pool.length];
-    const sheet = assets ? assets.enemies[name] : null;
+    const sheet = assets ? assets.enemies[z.sprite || 'red_pawn'] : null;
     // when attacking the wall: jab toward it (left) on a rhythm + strike sparks
     // (frozen raiders can't move or attack)
     let ax = z.x;
@@ -1034,7 +1362,8 @@ function draw(ctx, s, { drag, assets, terrain, now }) {
     }
     shadow(ctx, ax, y + displayH * 0.24, displayH * 0.24);
     const animIdx = frozen ? z.id * 2 : now / 90 + z.id * 2; // hold a frame when frozen
-    if (!drawFrame(ctx, sheet, animIdx, ax, y - displayH * 0.06, displayH, true, frozen ? '#8fd0ff' : undefined)) {
+    const tint = frozen ? '#8fd0ff' : z.enraged ? '#ff5555' : undefined;
+    if (!drawFrame(ctx, sheet, animIdx, ax, y - displayH * 0.06, displayH, true, tint)) {
       ctx.fillStyle = z.boss ? '#c1121f' : '#b23a48';
       circle(ctx, ax, y, z.boss ? 34 : 20);
     }
@@ -1109,7 +1438,7 @@ function draw(ctx, s, { drag, assets, terrain, now }) {
   // ---- projectiles: flying arrows (sprite rotated toward the target) ----
   const arrowImg = terrain && terrain.arrow;
   for (const p of s.projectiles) {
-    const prog = 1 - p.ttl / 0.18;
+    const prog = 1 - p.ttl / (p.dur || 0.18);
     const px = p.x + (p.tx - p.x) * prog;
     const py = p.y + (p.ty - p.y) * prog;
     const ang = Math.atan2(p.ty - p.y, p.tx - p.x);

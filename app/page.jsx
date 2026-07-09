@@ -3,10 +3,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Leaderboard from '@/components/Leaderboard';
+import { useLeaderboard } from '@/hooks/useLeaderboard';
 
 export default function Home() {
   const router = useRouter();
   const [name, setName] = useState('');
+  const { leaderboard } = useLeaderboard();
 
   function play(e) {
     e.preventDefault();
@@ -63,7 +66,7 @@ export default function Home() {
         <section className="panel feature">
           <span className="feature-ico">🛡️</span>
           <h3>Defend</h3>
-          <p className="muted">Survive escalating waves — a warlord boss storms in every 5th.</p>
+          <p className="muted">Four raider classes and three rotating bosses — Warlord, Berserker, Summoner.</p>
         </section>
         <section className="panel feature">
           <span className="feature-ico">🏆</span>
@@ -84,12 +87,27 @@ export default function Home() {
             <strong> merge &amp; promote</strong> it (Recruit → Legendary), or onto an empty
             slot to reposition.
           </li>
-          <li>Every 5th wave sends a <strong>warlord boss</strong>. Don’t let the wall fall!</li>
+          <li>
+            Between waves, spend gold in the <strong>shop</strong>: restock Catapult &amp; Frost,
+            or buy permanent upgrades (wall, damage, fire rate, crit chance, income).
+          </li>
+          <li>
+            Chain kills fast for a <strong>combo</strong> score multiplier — and watch for
+            criticals!
+          </li>
+          <li>
+            Every 5th wave sends a <strong>boss</strong>: the Warlord, the enraging Berserker, or
+            the minion-conjuring Summoner. Don’t let the wall fall!
+          </li>
         </ol>
       </section>
 
+      <section style={{ marginTop: '1.5rem' }}>
+        <Leaderboard entries={leaderboard.slice(0, 10)} title="🏆 Live Leaderboard — Top 10" />
+      </section>
+
       <p className="home-foot">
-        <Link href="/leaderboard">🏆 View the global leaderboard →</Link>
+        <Link href="/leaderboard">🏆 View the full global leaderboard →</Link>
       </p>
     </>
   );

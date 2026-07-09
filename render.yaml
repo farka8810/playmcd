@@ -28,3 +28,7 @@ services:
         fromDatabase:
           name: playmcd-db
           property: connectionString
+      # Absolute origin for social-share (OpenGraph/Twitter) image URLs.
+      # Update if you attach a custom domain.
+      - key: NEXT_PUBLIC_SITE_URL
+        value: https://playmcd.onrender.com

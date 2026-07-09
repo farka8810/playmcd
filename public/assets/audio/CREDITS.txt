@@ -1,0 +1,5 @@
+kingdom-theme.mp3
+  "The Bard's Tale" by RandomMind
+  Source: https://opengameart.org/content/chiptune-medieval-the-bards-tale
+  License: CC0 1.0 (Public Domain) — free to use, no attribution required.
+  Kept here as a courtesy credit.

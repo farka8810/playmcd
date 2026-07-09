@@ -42,7 +42,7 @@ function Play() {
       </p>
 
       <div className="game-layout">
-        <GameCanvas onGameOver={onGameOver} />
+        <GameCanvas onGameOver={onGameOver} leaderboard={leaderboard} />
         <Leaderboard entries={leaderboard} title="Live leaderboard" />
       </div>
 
